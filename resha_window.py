@@ -8,7 +8,7 @@ CUR_DEFAULT_COLOR = 4
 DEBUG =True
 
 
-
+# ETJ DEBUG
 def next_color():
     if not DEBUG: return None
     global CUR_DEFAULT_COLOR
@@ -26,7 +26,6 @@ def default_options( text=None):
         opt["text"] = text
     return opt
 
-# ETJ DEBUG
 Frame = LabelFrame # FIXME: remove this; it just shows where frames start
 # END DEBUG        
 
@@ -34,6 +33,8 @@ class ReshaWindow( object):
     def __init__( self, master):
 
         self.rc = ReshaController( connect_immediately=True)
+        self.declare_instance_widgets()
+        
         
         self.frame = Frame( master, default_options())
         self.frame.columnconfigure( 0, weight=0)
@@ -50,6 +51,10 @@ class ReshaWindow( object):
         # self.image_frame.columnconfigure(   1, weight=1)
         self.image_frame.grid( column=1, row=0, sticky="nesw")
         
+        # Only call connect_instance_widgets once all instance
+        # widgets have been instantiated
+        self.connect_instance_widgets()
+        
     def declare_instance_widgets( self):
         # Declare all the widgets we'll need to communicate with
         # (ex: buttons & sliders, but not frames or labels)
@@ -63,6 +68,7 @@ class ReshaWindow( object):
         
         # Jog controls
         self.jog_distance_dropdown = None
+        self.jog_distance_var = None
         self.jog_speed_slider = None
         self.laser_power_slider = None
         
@@ -87,6 +93,20 @@ class ReshaWindow( object):
         # Should be called only after all instance widgets have
         # been initialized elsewhere. 
         
+        # TODO: if a button is held down, we'd like to keep 
+        # sending signals every few millis.  How to do?
+        self.north_button.configure( command=self.rc.jog_up)
+        self.south_button.configure( command=self.rc.jog_down)
+        self.east_button.configure( command=self.rc.jog_right)
+        self.west_button.configure( command=self.rc.jog_left)
+        
+        # Watch  self.jog_distance_dropdown.  This requires a little 
+        # gymnastics because of how TKinter watches variables
+        def jog_dist_call( *args):
+            cur_val = self.jog_distance_var.get()
+            self.rc.set_jog_distance( cur_val)
+        
+        self.jog_distance_var.trace( "w", jog_dist_call)
         
         
     def grid_win( self, master):
@@ -106,28 +126,25 @@ class ReshaWindow( object):
     def make_jog_frame( self, master):
         jof = Frame( master, default_options())
         
+        # Jog buttons
         jcq = self.jog_control_quad( jof)
-        jcq.grid( column=0, row=0)
+        jcq.grid( column=0, row=0, columnspan=3)
+        
+        # Jog distance Dropdown
+        jog_distance_label = Label( jof, text="Jog Distance:")
+        jog_distance_label.grid(column=0, row=1)    
+        
+        self.jog_distance_var = IntVar(jof)
+        self.jog_distance_var.set(5)
+        dist_choices = [1, 5, 20, 50]
+        self.jog_distance_dropdown = OptionMenu( jof, self.jog_distance_var, *dist_choices)
+        self.jog_distance_dropdown.grid( column=1, row=1)
+        
+        # Jog speed slider
+        
+        # Laser power slider
+        
         return jof
-        
-    def make_image_frame( self, master):
-        imf = Frame( master, default_options())
-        
-        #TODO: c should be an instance variable
-        c = Canvas( imf, bg="#ff5")
-        c.grid( column=0, row=0, sticky="news")
-        
-        canvas_controls = Frame(imf, default_options())
-        canvas_controls.grid( column=0, row=1, sticky="ew")
-        b = Button( canvas_controls, default_options("Image controls here"))
-        b.grid()
-        
-        imf.columnconfigure(0, weight=1)
-        imf.rowconfigure( 0, weight=1)
-        imf.rowconfigure( 1, weight=0)
-        
-        
-        return imf
         
     def jog_control_quad( self, master):
         jcq = Frame( master, bg=next_color())
@@ -139,10 +156,30 @@ class ReshaWindow( object):
         
         self.north_button.grid( row = 0, column=1)
         self.south_button.grid( row = 2, column=1)
-        self.east_button.grid ( row = 1, column=0)
-        self.west_button.grid ( row = 1, column=2)
+        self.east_button.grid ( row = 1, column=2)
+        self.west_button.grid ( row = 1, column=0)
               
-        return jcq
+        return jcq        
+        
+    def make_image_frame( self, master):
+        imf = Frame( master, default_options())
+        
+        #TODO: c should be an instance variable
+        self.image_canvas = Canvas( imf, bg="#ff5")
+        self.image_canvas.grid( column=0, row=0, sticky="news")
+        
+        canvas_controls = Frame(imf, default_options())
+        canvas_controls.grid( column=0, row=1, sticky="ew")
+        b = Button( canvas_controls, default_options("Image controls here"))
+        b.grid()
+        
+        imf.columnconfigure(0, weight=1)
+        imf.rowconfigure( 0, weight=1)
+        imf.rowconfigure( 1, weight=0)
+        
+        return imf
+        
+
     
 def main():
     root = Tk()
