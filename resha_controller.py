@@ -16,13 +16,15 @@ def find_likely_arduino():
             return os.path.join( search_dir, ards[0])
         else:
             print "Can't automatically find a connected Arduino. Is one connected?"
-            return None
+            return []
     # Linux
     elif sys.platform == 'linux2':
         print "Needed: automatic detection routine for connected Arduino"
+        return []
     # Windows
     elif sys.platform.startswith('win'):
         print "Needed: automatic detection routine for connected Arduino" 
+        []
 
     
 class ReshaController(object):    

@@ -2,11 +2,14 @@
 # -*- coding: UTF-8 -*-
 import os, sys, re
 from Tkinter import *
+import resha_controller
 from resha_controller import ReshaController
 
-CUR_DEFAULT_COLOR = 4
+CUR_DEFAULT_COLOR = 100
 DEBUG =True
 
+if DEBUG:
+    Frame = LabelFrame # FIXME: remove this; it just shows where frames' borders are
 
 # ETJ DEBUG
 def next_color():
@@ -17,6 +20,7 @@ def next_color():
     return res
 
 def default_options( text=None):
+    if not DEBUG: return {"text": text}
     opt =  {    "bd": 10,
                 "bg": next_color(),
                 "padx": 15,
@@ -26,32 +30,23 @@ def default_options( text=None):
         opt["text"] = text
     return opt
 
-Frame = LabelFrame # FIXME: remove this; it just shows where frames start
 # END DEBUG        
 
 class ReshaWindow( object):
     def __init__( self, master):
 
-        self.rc = ReshaController( connect_immediately=True)
+        self.rc = ReshaController( connect_immediately=False)
+        try: 
+            self.rc.connect_hardware()
+        except Exception, e:
+            print("Couldn't find hardware to connect to. Connect manually "
+                "using the interface instead")
+            
         self.declare_instance_widgets()
         
+        self.set_up_ui( master)
         
-        self.frame = Frame( master, default_options())
-        self.frame.columnconfigure( 0, weight=0)
-        self.frame.columnconfigure( 1, weight=1)
-        self.frame.rowconfigure(    0, weight=1)
-        self.frame.grid( sticky="nsew")
-                
-        # left side, with jog controls 
-        self.jog_frame = self.make_jog_frame( self.frame)
-        self.jog_frame.grid(   column=0, row=0, sticky="nw")
-        
-        # # right side, that loads and runs files
-        self.image_frame = self.make_image_frame( self.frame)
-        # self.image_frame.columnconfigure(   1, weight=1)
-        self.image_frame.grid( column=1, row=0, sticky="nesw")
-        
-        # Only call connect_instance_widgets once all instance
+        # Only call connect_instance_widgets after all instance
         # widgets have been instantiated
         self.connect_instance_widgets()
         
@@ -59,6 +54,10 @@ class ReshaWindow( object):
         # Declare all the widgets we'll need to communicate with
         # (ex: buttons & sliders, but not frames or labels)
         # so they can be accessed from anywhere in the class.
+        
+        # Connection monitor
+        self.connected_label = None
+        self.portname_dropdown = None
         
         # Jog buttons
         self.north_button = None
@@ -89,6 +88,22 @@ class ReshaWindow( object):
         # location rather than mixed in with the UI code.  This
         # should help separate the appearance from the behavior.
         
+    def set_up_ui( self, master):
+        self.frame = Frame( master, default_options())
+        self.frame.columnconfigure( 0, weight=0)
+        self.frame.columnconfigure( 1, weight=1)
+        self.frame.rowconfigure(    0, weight=1)
+        self.frame.grid( sticky="nsew")
+                
+        # left side, with jog controls 
+        self.jog_frame = self.make_jog_frame( self.frame)
+        self.jog_frame.grid(   column=0, row=0, sticky="nw")
+        
+        # # right side, that loads and runs files
+        self.image_frame = self.make_image_frame( self.frame)
+        # self.image_frame.columnconfigure(   1, weight=1)
+        self.image_frame.grid( column=1, row=0, sticky="nesw")
+            
     def connect_instance_widgets( self):
         # Should be called only after all instance widgets have
         # been initialized elsewhere. 
@@ -125,6 +140,15 @@ class ReshaWindow( object):
     
     def make_jog_frame( self, master):
         jof = Frame( master, default_options())
+        
+        # Connection monitor
+        self.connected_label = Label( jof, text="Not connected: ")
+        self.portname_var = StringVar( jof)
+        unk = "Unknown Port"
+        self.portname_var.set( unk)
+        # TODO: get possible port names programmatically here
+        port_options = resha_controller.find_likely_arduino() + ["Other"]
+        self.portname_dropdown = OptionMenu( jof, self.portname_var, port_options)
         
         # Jog buttons
         jcq = self.jog_control_quad( jof)
@@ -164,16 +188,19 @@ class ReshaWindow( object):
     def make_image_frame( self, master):
         imf = Frame( master, default_options())
         
-        #TODO: c should be an instance variable
+        # Image canvas where we'll load and manipulate images to cut
         self.image_canvas = Canvas( imf, bg="#ff5")
         self.image_canvas.grid( column=0, row=0, sticky="news")
         
+        # Controls that will manipulate the image
         canvas_controls = Frame(imf, default_options())
         canvas_controls.grid( column=0, row=1, sticky="ew")
         b = Button( canvas_controls, default_options("Image controls here"))
         b.grid()
         
+        # Everything stretches horizontally
         imf.columnconfigure(0, weight=1)
+        # Canvas stretches vertically, controls don't
         imf.rowconfigure( 0, weight=1)
         imf.rowconfigure( 1, weight=0)
         
