@@ -11,6 +11,7 @@ DEBUG =True
 if DEBUG:
     Frame = LabelFrame # FIXME: remove this; it just shows where frames' borders are
 
+# FIXME: Need to disable all controls unless an Arduino is connected
 # ETJ DEBUG
 def next_color():
     if not DEBUG: return None
@@ -31,6 +32,19 @@ def default_options( text=None):
     return opt
 
 # END DEBUG        
+
+# Needed for console Text field
+from Tkinter import Text
+from idlelib.WidgetRedirector import WidgetRedirector
+
+class ReadOnlyText(Text):
+    def __init__(self, *args, **kwargs):
+        Text.__init__(self, *args, **kwargs)
+        self.redirector = WidgetRedirector(self)
+        self.insert = \
+            self.redirector.register("insert", lambda *args, **kw: "break")
+        self.delete = \
+            self.redirector.register("delete", lambda *args, **kw: "break")
 
 class ReshaWindow( object):
     def __init__( self, master):
@@ -168,6 +182,16 @@ class ReshaWindow( object):
         
         # Laser power slider
         
+        # Console textfield
+        self.console_textfield = self.make_console_textfield( jof)
+        
+        # ETJ DEBUG
+        self.append_to_console( "Console output")
+        self.append_to_console( "Begins here")
+        for i in range( 10):
+            self.append_to_console( "Adding line" + str( i))
+        
+        # END DEBUG        
         return jof
         
     def jog_control_quad( self, master):
@@ -185,6 +209,19 @@ class ReshaWindow( object):
               
         return jcq        
         
+    def make_console_textfield( self, master):
+        # Console textfield
+        console_options = default_options()
+        console_options.update( {"width":30, "height":5, "pady":0,})
+        console_textfield = ReadOnlyText( master, console_options)
+        console_textfield.grid( column=0, row=2, columnspan=3)
+        
+        return console_textfield
+    
+    def append_to_console( self, text):
+        self.console_textfield.insert( END, text + "\n")
+        
+    # I M A G E   F R A M E
     def make_image_frame( self, master):
         imf = Frame( master, default_options())
         
@@ -207,7 +244,6 @@ class ReshaWindow( object):
         return imf
         
 
-    
 def main():
     root = Tk()
     root.columnconfigure( 0, weight=1)
