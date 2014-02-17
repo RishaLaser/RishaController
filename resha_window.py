@@ -6,7 +6,7 @@ import resha_controller
 from resha_controller import ReshaController
 
 CUR_DEFAULT_COLOR = 100
-DEBUG =True
+DEBUG =False
 
 if DEBUG:
     Frame = LabelFrame # FIXME: remove this; it just shows where frames' borders are
