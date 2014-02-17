@@ -14,6 +14,10 @@ if DEBUG:
 # FIXME: Need to disable all controls unless an Arduino is connected
 # ETJ DEBUG
 def next_color():
+    # This cycles a global variable through different colors so we 
+    # can color the backgrounds of each frame differently and see 
+    # how the layout is working.  Definitely to be removed before 
+    # deploying. -ETJ 16 Feb 2014
     if not DEBUG: return None
     global CUR_DEFAULT_COLOR
     res =  "#%03X"%CUR_DEFAULT_COLOR
@@ -38,6 +42,8 @@ from Tkinter import Text
 from idlelib.WidgetRedirector import WidgetRedirector
 
 class ReadOnlyText(Text):
+    # TODO: any way to prevent the cursor from blinking?  That kind of implies
+    # you can enter text there. 
     def __init__(self, *args, **kwargs):
         Text.__init__(self, *args, **kwargs)
         self.redirector = WidgetRedirector(self)
@@ -48,22 +54,27 @@ class ReadOnlyText(Text):
 
 class ReshaWindow( object):
     def __init__( self, master):
-
+        # Create laser controller object
         self.rc = ReshaController( connect_immediately=False)
-        try: 
-            self.rc.connect_hardware()
-        except Exception, e:
-            print("Couldn't find hardware to connect to. Connect manually "
-                "using the interface instead")
-            
+        
+        # Set up UI
         self.declare_instance_widgets()
-        
         self.set_up_ui( master)
-        
         # Only call connect_instance_widgets after all instance
         # widgets have been instantiated
-        self.connect_instance_widgets()
+        self.connect_instance_widgets()        
         
+        # Connect controller to actual hardware
+        try: 
+            self.rc.set_logging_func( self.append_to_console)
+            self.rc.connect_hardware()
+        except Exception, e:
+            # ETJ DEBUG
+            print e
+            # END DEBUG
+            print("Couldn't find hardware to connect to. Connect manually "
+                "using the interface instead")
+    
     def declare_instance_widgets( self):
         # Declare all the widgets we'll need to communicate with
         # (ex: buttons & sliders, but not frames or labels)
@@ -117,6 +128,10 @@ class ReshaWindow( object):
         self.image_frame = self.make_image_frame( self.frame)
         # self.image_frame.columnconfigure(   1, weight=1)
         self.image_frame.grid( column=1, row=0, sticky="nesw")
+        
+        
+        self.console_textfield = self.make_console_textfield( self.frame)
+        
             
     def connect_instance_widgets( self):
         # Should be called only after all instance widgets have
@@ -156,42 +171,39 @@ class ReshaWindow( object):
         jof = Frame( master, default_options())
         
         # Connection monitor
-        self.connected_label = Label( jof, text="Not connected: ")
-        self.portname_var = StringVar( jof)
-        unk = "Unknown Port"
-        self.portname_var.set( unk)
-        # TODO: get possible port names programmatically here
-        port_options = resha_controller.find_likely_arduino() + ["Other"]
-        self.portname_dropdown = OptionMenu( jof, self.portname_var, port_options)
+        # TODO: put this online, and provide a mechanism to connect, disconnect,
+        # and select appropriate ports
+        if False:
+            self.connected_label = Label( jof, text="Not connected: ")
+            self.portname_var = StringVar( jof)
+            unk = "Unknown Port"
+            self.portname_var.set( unk)
+            port_options = resha_controller.find_likely_arduino() + ["Other"]
+            self.portname_dropdown = OptionMenu( jof, self.portname_var, port_options)
+            self.connected_label.grid( column=0, row=0)
+            self.portname_dropdown.grid( column=1, row=0)
         
         # Jog buttons
         jcq = self.jog_control_quad( jof)
-        jcq.grid( column=0, row=0, columnspan=3)
+        jcq.grid( column=0, row=1, columnspan=3)
         
         # Jog distance Dropdown
         jog_distance_label = Label( jof, text="Jog Distance:")
-        jog_distance_label.grid(column=0, row=1)    
+        jog_distance_label.grid(column=0, row=2)    
         
         self.jog_distance_var = IntVar(jof)
         self.jog_distance_var.set(5)
         dist_choices = [1, 5, 20, 50]
         self.jog_distance_dropdown = OptionMenu( jof, self.jog_distance_var, *dist_choices)
-        self.jog_distance_dropdown.grid( column=1, row=1)
+        self.jog_distance_dropdown.grid( column=1, row=2)
         
         # Jog speed slider
         
         # Laser power slider
         
         # Console textfield
-        self.console_textfield = self.make_console_textfield( jof)
-        
-        # ETJ DEBUG
-        self.append_to_console( "Console output")
-        self.append_to_console( "Begins here")
-        for i in range( 10):
-            self.append_to_console( "Adding line" + str( i))
-        
-        # END DEBUG        
+        # self.console_textfield = self.make_console_textfield( jof)
+         
         return jof
         
     def jog_control_quad( self, master):
@@ -212,14 +224,20 @@ class ReshaWindow( object):
     def make_console_textfield( self, master):
         # Console textfield
         console_options = default_options()
-        console_options.update( {"width":30, "height":5, "pady":0,})
+        console_options.update( {"height":6, "pady":0, "padx":1,})
         console_textfield = ReadOnlyText( master, console_options)
-        console_textfield.grid( column=0, row=2, columnspan=3)
+        console_textfield.grid( column=0, row=2, columnspan=2, sticky="ew")
         
         return console_textfield
     
     def append_to_console( self, text):
-        self.console_textfield.insert( END, text + "\n")
+        if not text.endswith( "\n"):
+            text += "\n"
+
+        if DEBUG:
+            print text
+        self.console_textfield.insert( END, text)
+        self.console_textfield.see( END)
         
     # I M A G E   F R A M E
     def make_image_frame( self, master):
