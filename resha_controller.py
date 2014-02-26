@@ -51,6 +51,8 @@ class GcodeRunnerThread( threading.Thread):
     def run(self):
         if not self.is_running:
             self.is_running = True
+            # FIXME: need a way to identify here whether the run finished 
+            # successfully, was paused, or encountered an error
             last_line_run = self.run_gcode( start_line=self.current_line)
         
     def toggle_pause( self):
@@ -62,6 +64,17 @@ class GcodeRunnerThread( threading.Thread):
         self.is_paused = False
         self.current_line = None
         
+    def sendable_part_of_line( self, gcode_line):
+        # remove any comments or other code that shouldn't be sent to the machine
+        line = gcode_line.replace( "(", ";(")
+        line = re.sub(  r";.*$", "", line)
+        
+        return line
+        
+    def did_finish( self):
+        self.is_running = False
+        self.current_line = None
+        
     def run_gcode( self, start_line=0):
         for ordinal_line, line in enumerate( self.gcode_lines[start_line:]):
             line_num = start_line + ordinal_line
@@ -71,20 +84,21 @@ class GcodeRunnerThread( threading.Thread):
             
             self.current_line = line_num                
             
-            # ETJ DEBUG
-            print "%i: Sending line: <%s> to hardware"%( line_num, line)
-            # END DEBUG
-            
-            # TODO: catch any errors returned by hardware and auto-pause the controller            
-            res = self.controller.grbl_send( line)
-            
-            # ETJ DEBUG
-            print "%i: Received response: <%s> from hardware"%( line_num, res)
-            # END DEBUG
+            line = self.sendable_part_of_line( line)
+            # If the line is all comment, (and thus we get back nothing from 
+            # sendable_part_of_line), then don't send anything
+            if line:
+                # TODO: catch any errors returned by hardware and auto-pause the controller            
+                res = self.controller.grbl_send( line)
             
             # NOTE: off-by-one error?  Do we want to return *last line completed*
             # or *next line*?
             line_num += 1
+            
+        # FIXME: to prevent sync problems, we should only read these instance 
+        # variables, yet here we are writing them.  Anyway, need a way to 
+        # signal a successful completion
+        self.did_finish()
         return line_num
             
         
@@ -103,6 +117,7 @@ class ReshaController(object):
         self.logging_func = print_wrapper
         
         self.gcode_runner_thread = None
+        self.loaded_gcode = None
         
         # Machine extents, in millimeters.  To be adjusted. 
         self.min_x = min_x
@@ -119,7 +134,14 @@ class ReshaController(object):
             
             # TODO: handle error here as needed
         
-
+    def width( self):
+        # NOTE: no check on whether max & min are actually larger/smaller
+        return self.max_x - self.min_x
+    
+    def height( self):
+        # NOTE: no check on whether max & min are actually larger/smaller        
+        return self.max_y - self.min_y
+    
     def connect_hardware( self, port_name=None):
         if not port_name:
             port_names = find_likely_arduino()
@@ -157,6 +179,9 @@ class ReshaController(object):
         # from the ReshaController to a console pane
         self.logging_func = func
     
+    def set_loaded_gcode( self, gcode_lines):
+        self.loaded_gcode = gcode_lines
+    
     def grbl_send( self, gcode):
         line_delimiter = "\r\n"
         
@@ -176,9 +201,10 @@ class ReshaController(object):
         # FIXME: this is just for testing's sake.  There's probably 
         # a better way to go about waiting for responses:
         res = self.serial.readline()
+        self.logging_func( res)
+        
         while self.serial.inWaiting() > 0:
             res = self.serial.readline()
-            
             self.logging_func( res)
 
         return res
@@ -269,7 +295,8 @@ class ReshaController(object):
         self.jog_relative( abs_distance, 0);
 
     
-    def run_gcode( gcode_lines):
+    def run_gcode( self, gcode_lines=None):
+        gcode_lines = gcode_lines or self.loaded_gcode
         t = GcodeRunnerThread( self, gcode_lines)
         self.gcode_runner_thread = t
         # TODO: validate that we can run code - we're not already running

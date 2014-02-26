@@ -7,6 +7,31 @@ import tkFileDialog
 import resha_controller
 from resha_controller import ReshaController
 
+# ETJ DEBUG
+# Import gcodeParser.  I've been keeping it separate from this
+# code, so monkey around with sys.path for now -ETJ 19 Feb 2014
+
+# Add superdirectories to sys.path
+cur_dir = os.path.abspath( __file__)
+up_dir = os.path.split( cur_dir)[0]
+up_up = os.path.split( up_dir)[0]
+yagv_dir = os.path.join( up_up, "YAGV")
+sys.path.append( yagv_dir)
+# END DEBUG
+
+import gcodeParser 
+
+# DXF Parsing
+# ETJ DEBUG
+scribbles_dir = os.path.join( up_up, "Scribbles Scripts")
+sys.path.append( scribbles_dir)
+from scribbles.import_dxf import DxfParser
+from scribbles.context import GCodeContext
+# END DEBUG
+
+root = None
+
+
 CUR_DEFAULT_COLOR = 100
 DEBUG =True
 
@@ -109,9 +134,6 @@ class ReshaWindow( object):
         self.start_cut_button = None
         self.pause_cut_button = None
         self.stop_cut_button = None
-        
-        # Gcode data
-        self.loaded_gcode = None
         
         # UI actions are set in connect_instance_widgets()
         
@@ -262,8 +284,18 @@ class ReshaWindow( object):
         # Controls that will manipulate the image
         canvas_controls = Frame(imf, default_options())
         canvas_controls.grid( column=0, row=1, sticky="ew")
-        b = Button( canvas_controls, default_options("Image controls here"))
-        b.grid()
+        
+        # Image controls
+        # TODO: make all buttons same size
+        # TODO: Use images for control buttons & add tooltips
+        self.load_image_button = Button( canvas_controls, default_options("Load Image"))
+        self.start_cut_button  = Button( canvas_controls, default_options("Start"))
+        self.pause_cut_button  = Button( canvas_controls, default_options("Pause/Resume"))
+        self.stop_cut_button   = Button( canvas_controls, default_options("Stop"))        
+        self.load_image_button.grid( row=0, column=0)
+        self.start_cut_button.grid(  row=0, column=1)
+        self.pause_cut_button.grid(  row=0, column=2)
+        self.stop_cut_button.grid(   row=0, column=3)
         
         # Everything stretches horizontally
         imf.columnconfigure(0, weight=1)
@@ -280,40 +312,64 @@ class ReshaWindow( object):
         fts = [("2D DXF files", '.dxf'), ('2D Gcode files', '.gcode')]
         options = {'initialdir':"/Users/jonese/Desktop", 
                     'filetypes':fts}
-        file_to_read = tkFileDialog.askopenfilename( **options)
+        file_path = tkFileDialog.askopenfilename( **options)
         
-        ext = os.path.split( file_to_read)[1].lower()
-        # ETJ DEBUG
-        print "************************************************************"
-        classOrFile = self.__class__.__name__ if 'self' in vars() else os.path.basename(__file__)
-        method = sys._getframe().f_code.co_name
-        print "%(classOrFile)s:%(method)s"%vars()
-        print '\text:  %s'% ext
-        print "************************************************************"
+        ext = os.path.splitext( file_path)[1].lower()
 
-        # END DEBUG
-        gcode_exts = ["ngc", "gcode"]
-        dxf_exts = ["dxf"]
+        gcode_exts = [".ngc", ".gcode"]
+        dxf_exts = [".dxf"]
         
         # if we've loaded a DXF file, convert it to Gcode
+        gcode_lines = []
         if ext in dxf_exts:
-            pass
-            # FIXME: add code here to use Makerbot DXF conversion code
+            gcode_lines = self.convert_dxf_to_gcode( file_path)
             
         # if we've opened a Gcode file, split it on lines
         elif ext in gcode_exts:
+            # Also need to parse this Gcode using gcodeParser
             # read file, split by line, and set instance array
-            f = open( file_to_read, "r")
-            all_lines = f.read()
+            f = open( file_path, "r")
+            gcode_lines = f.read().split("\n")
             f.close()
             
-            # NOTE: need to detect strange line splits (\n\r, \r\n, etc?)
-            self.loaded_gcode = all_lines.split("\n")
         else:
             # shouldn't get here
-            raise ValueError( "Unable to handle file %s"%file_to_read)
+            raise ValueError( "Unable to handle file %s"%file_path)
+            
+        # NOTE: need to detect strange line splits (\n\r, \r\n, etc.)?
+        self.rc.set_loaded_gcode( gcode_lines)        
+        self.append_to_console( "Loaded file: %s"%file_path)
+    
+    # NOTE: this should probably be in the controller object, not the window
+    def convert_dxf_to_gcode( self, dxf_path):
+        dxf_file = open( dxf_path, "r")
+        
+        parser = DxfParser( dxf_file)
+        
+        # FIXME: need better values for these details.  The following are
+        # defaults taken from scribbles.py
+        z_height = 0
+        z_feedrate = 150
+        xy_feedrate = 2000
+        start_delay = 60
+        stop_delay = 120
+        line_width = 0.5
+        
+        context = GCodeContext(z_feedrate, z_height, xy_feedrate, start_delay, stop_delay, line_width, dxf_path)
+        parser.parse()
+        for entity in parser.entities:
+            entity.get_gcode(context)
+        all_gcode = context.generate( should_print=False)        
+        all_gcode = all_gcode.split("\n")
+
+        dxf_file.close()
+        
+        return all_gcode
+        
+        
         
 def main():
+    # FIXME: Change Menu Bar to read "ReshaLaser", rather than "Python"
     root = Tk()
     root.columnconfigure( 0, weight=1)
     root.rowconfigure( 0, weight=1)
