@@ -54,7 +54,8 @@ class GcodeRunnerThread( threading.Thread):
             last_line_run = self.run_gcode( start_line=self.current_line)
         
     def toggle_pause( self):
-        self.is_paused = not self.is_paused
+        if self.is_running:
+            self.is_paused = not self.is_paused
         
     def cancel_run( self):
         self.is_running = False
@@ -283,10 +284,16 @@ class ReshaController(object):
         # END DEBUG
         
     def toggle_pause_gcode( self):
-        pass
+        # ETJ DEBUG
+        print "toggle_pause_gcode() called"
+        # END DEBUG
+        self.gcode_runner_thread.toggle_pause_gcode()
     
     def stop_gcode( self):
-        pass
+        # ETJ DEBUG
+        print "stop_gcode() called"
+        # END DEBUG
+        self.gcode_runner_thread.cancel_run()
         
 # ETJ DEBUG
 # TODO: remove this; it's just for convenience when debugging so that

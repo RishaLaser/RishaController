@@ -2,6 +2,8 @@
 # -*- coding: UTF-8 -*-
 import os, sys, re
 from Tkinter import *
+import tkFileDialog
+
 import resha_controller
 from resha_controller import ReshaController
 
@@ -108,10 +110,10 @@ class ReshaWindow( object):
         self.pause_cut_button = None
         self.stop_cut_button = None
         
-        # If we also set their actions here, we can control
-        # the application's behavior from this centralized
-        # location rather than mixed in with the UI code.  This
-        # should help separate the appearance from the behavior.
+        # Gcode data
+        self.loaded_gcode = None
+        
+        # UI actions are set in connect_instance_widgets()
         
     def set_up_ui( self, master):
         self.frame = Frame( master, default_options())
@@ -151,6 +153,16 @@ class ReshaWindow( object):
             self.rc.set_jog_distance( cur_val)
         
         self.jog_distance_var.trace( "w", jog_dist_call)
+        
+        # Load/ Start/ Stop/ Pause buttons
+        # Image controls
+        # TODO: These need logic to en-/dis-able the buttons
+        # according to current state( e.g., pause is disabled when not 
+        # running, start disabled when paused)
+        self.load_image_button.configure( command=self.open_readable_file)
+        self.start_cut_button.configure( command=self.rc.run_gcode)
+        self.pause_cut_button.configure( command=self.rc.toggle_pause_gcode) 
+        self.stop_cut_button.configure( command=self.rc.stop_gcode)
         
         
     def grid_win( self, master):
@@ -260,8 +272,47 @@ class ReshaWindow( object):
         imf.rowconfigure( 1, weight=0)
         
         return imf
+    
+    def open_readable_file( self):
+        # TODO: add some preferences so we can remember last-used 
+        # directory as the next initialdirectory
+        # options: defaultextension, filetypes, initialdir, initialfile, multiple, message, parent, title
+        fts = [("2D DXF files", '.dxf'), ('2D Gcode files', '.gcode')]
+        options = {'initialdir':"/Users/jonese/Desktop", 
+                    'filetypes':fts}
+        file_to_read = tkFileDialog.askopenfilename( **options)
         
+        ext = os.path.split( file_to_read)[1].lower()
+        # ETJ DEBUG
+        print "************************************************************"
+        classOrFile = self.__class__.__name__ if 'self' in vars() else os.path.basename(__file__)
+        method = sys._getframe().f_code.co_name
+        print "%(classOrFile)s:%(method)s"%vars()
+        print '\text:  %s'% ext
+        print "************************************************************"
 
+        # END DEBUG
+        gcode_exts = ["ngc", "gcode"]
+        dxf_exts = ["dxf"]
+        
+        # if we've loaded a DXF file, convert it to Gcode
+        if ext in dxf_exts:
+            pass
+            # FIXME: add code here to use Makerbot DXF conversion code
+            
+        # if we've opened a Gcode file, split it on lines
+        elif ext in gcode_exts:
+            # read file, split by line, and set instance array
+            f = open( file_to_read, "r")
+            all_lines = f.read()
+            f.close()
+            
+            # NOTE: need to detect strange line splits (\n\r, \r\n, etc?)
+            self.loaded_gcode = all_lines.split("\n")
+        else:
+            # shouldn't get here
+            raise ValueError( "Unable to handle file %s"%file_to_read)
+        
 def main():
     root = Tk()
     root.columnconfigure( 0, weight=1)
