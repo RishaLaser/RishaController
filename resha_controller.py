@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 import os, sys, re
 import serial, time
+import threading
 
 GRBL_BAUD = 9600
 DEBUG = True
@@ -37,6 +38,55 @@ def find_likely_arduino():
 def print_wrapper( a_str):
     print a_str
 
+class GcodeRunnerThread( threading.Thread):
+    def __init__(self, controller_obj, gcode_lines):
+        threading.Thread.__init__(self)
+        self.gcode_lines = gcode_lines
+        self.controller = controller_obj
+        
+        self.current_line = 0
+        self.is_paused = False
+        self.is_running = False
+
+    def run(self):
+        if not self.is_running:
+            self.is_running = True
+            last_line_run = self.run_gcode( start_line=self.current_line)
+        
+    def toggle_pause( self):
+        self.is_paused = not self.is_paused
+        
+    def cancel_run( self):
+        self.is_running = False
+        self.is_paused = False
+        self.current_line = None
+        
+    def run_gcode( self, start_line=0):
+        for ordinal_line, line in enumerate( self.gcode_lines[start_line:]):
+            line_num = start_line + ordinal_line
+            
+            if not self.is_running or self.is_paused:
+                return line_num
+            
+            self.current_line = line_num                
+            
+            # ETJ DEBUG
+            print "%i: Sending line: <%s> to hardware"%( line_num, line)
+            # END DEBUG
+            
+            # TODO: catch any errors returned by hardware and auto-pause the controller            
+            res = self.controller.grbl_send( line)
+            
+            # ETJ DEBUG
+            print "%i: Received response: <%s> from hardware"%( line_num, res)
+            # END DEBUG
+            
+            # NOTE: off-by-one error?  Do we want to return *last line completed*
+            # or *next line*?
+            line_num += 1
+        return line_num
+            
+        
 class ReshaController(object):    
     def __init__( self, port_name=None, connect_immediately=False, 
                     jog_distance=5, 
@@ -50,6 +100,8 @@ class ReshaController(object):
         self.cur_y = 0
         self.relative_mode = False
         self.logging_func = print_wrapper
+        
+        self.gcode_runner_thread = None
         
         # Machine extents, in millimeters.  To be adjusted. 
         self.min_x = min_x
@@ -186,7 +238,6 @@ class ReshaController(object):
     def set_jog_distance( self, distance, *args):
         self.jog_distance = distance
 
-
     def jog_relative( self, x, y):
         # TODO: we should have some way to get errors back from grbl_send,
         # so we can update our state if any errors occur
@@ -217,6 +268,26 @@ class ReshaController(object):
         self.jog_relative( abs_distance, 0);
 
     
+    def run_gcode( gcode_lines):
+        t = GcodeRunnerThread( self, gcode_lines)
+        self.gcode_runner_thread = t
+        # TODO: validate that we can run code - we're not already running
+        # something else, the hardware is connected, etc.
+        
+        # ETJ DEBUG
+        print "Beginning GcodeRunnerThread"
+        # END DEBUG
+        self.gcode_runner_thread.run()
+        # ETJ DEBUG
+        print "gcode_runner_thread has begun"
+        # END DEBUG
+        
+    def toggle_pause_gcode( self):
+        pass
+    
+    def stop_gcode( self):
+        pass
+        
 # ETJ DEBUG
 # TODO: remove this; it's just for convenience when debugging so that
 # the correct program gets run regardless of the focussed window
