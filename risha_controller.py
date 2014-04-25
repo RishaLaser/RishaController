@@ -37,7 +37,7 @@ def find_likely_arduino():
 def print_wrapper( a_str):
     print a_str
 
-class ReshaController(object):    
+class RishaController(object):    
     def __init__( self, port_name=None, connect_immediately=False, 
                     jog_distance=5, 
                     min_x=CUTTER_MIN_X, min_y=CUTTER_MIN_Y,
@@ -101,7 +101,7 @@ class ReshaController(object):
     def set_logging_func( self, func):
         # func should take a string argument and store or 
         # report it in some form; for our purposes, it'll print messages
-        # from the ReshaController to a console pane
+        # from the RishaController to a console pane
         self.logging_func = func
     
     def set_loaded_gcode( self, gcode_lines):
@@ -224,7 +224,7 @@ class ReshaController(object):
 # TODO: remove this; it's just for convenience when debugging so that
 # the correct program gets run regardless of the focussed window
 if __name__ == '__main__':
-    import resha_window
-    resha_window.main()
+    import risha_window
+    risha_window.main()
 # END DEBUG
 

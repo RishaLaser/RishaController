@@ -4,8 +4,8 @@ import os, sys, re
 from Tkinter import *
 import tkFileDialog
 
-import resha_controller
-from resha_controller import ReshaController
+import risha_controller
+from risha_controller import RishaController
 
 # Gcode parsing
 import YAGV.gcodeParser
@@ -65,10 +65,10 @@ class ReadOnlyText(Text):
         self.delete = \
             self.redirector.register("delete", lambda *args, **kw: "break")
 
-class ReshaWindow( object):
+class RishaWindow( object):
     def __init__( self, master):
         # Create laser controller object
-        self.rc = ReshaController( connect_immediately=False)
+        self.rc = RishaController( connect_immediately=False)
         
         # Set up UI
         self.declare_instance_widgets()
@@ -198,7 +198,7 @@ class ReshaWindow( object):
             self.portname_var = StringVar( jof)
             unk = "Unknown Port"
             self.portname_var.set( unk)
-            port_options = resha_controller.find_likely_arduino() + ["Other"]
+            port_options = risha_controller.find_likely_arduino() + ["Other"]
             self.portname_dropdown = OptionMenu( jof, self.portname_var, port_options)
             self.connected_label.grid( column=0, row=0)
             self.portname_dropdown.grid( column=1, row=0)
@@ -369,12 +369,12 @@ class ReshaWindow( object):
                 next_x = segment.coords['X']
                 next_y = self.image_canvas.winfo_height() - segment.coords['Y']
                 
-                if segment.style == gcodeParser.META
+                # if segment.style == YAGV.gcodeParser.META:
                 
                 
                 # TODO: Need to ensure that 'fly' is the only line style
                 # we care to avoid here. 
-                if segment.style == gcodeParser.FLY:
+                if segment.style == YAGV.gcodeParser.FLY:
                     #  ETJ DEBUG
                     print( "Drawing line from %f, %f  to %f, %f"%(last_x, last_y, next_x, next_y))
                     #  END DEBUG 
@@ -388,12 +388,12 @@ class ReshaWindow( object):
                 last_y = next_y
         
 def main():
-    # FIXME: Change Menu Bar to read "ReshaLaser", rather than "Python"
+    # FIXME: Change Menu Bar to read "RishaLaser", rather than "Python"
     root = Tk()
     root.columnconfigure( 0, weight=1)
     root.rowconfigure( 0, weight=1)
     
-    r = ReshaWindow( root)
+    r = RishaWindow( root)
     
     root.mainloop()
     # root.destroy()
