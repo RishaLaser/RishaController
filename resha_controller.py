@@ -104,6 +104,9 @@ class ReshaController(object):
         # from the ReshaController to a console pane
         self.logging_func = func
     
+    def set_loaded_gcode( self, gcode_lines):
+        self.loaded_gcode = gcode_lines
+    
     def grbl_send( self, gcode):
         line_delimiter = "\r\n"
         
