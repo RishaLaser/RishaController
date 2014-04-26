@@ -220,11 +220,10 @@ class RishaController(object):
         self.jog_relative( abs_distance, 0);
 
     
-# ETJ DEBUG
-# TODO: remove this; it's just for convenience when debugging so that
+
+# TODO: remove this for distribution; it's just for convenience when debugging so that
 # the correct program gets run regardless of the focussed window
 if __name__ == '__main__':
     import risha_window
     risha_window.main()
-# END DEBUG
 

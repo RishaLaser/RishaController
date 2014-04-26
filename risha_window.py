@@ -8,7 +8,7 @@ import risha_controller
 from risha_controller import RishaController
 
 # Gcode parsing
-import YAGV.gcodeParser
+from YAGV import gcodeParser
 from YAGV.gcodeParser import GcodeParser 
 
 # DXF Parsing
@@ -24,8 +24,9 @@ DEBUG =True
 if DEBUG:
     Frame = LabelFrame # FIXME: remove this; it just shows where frames' borders are
 
-# FIXME: Need to disable all controls unless an Arduino is connected
-# ETJ DEBUG
+# FIXME: Need to disable all jog controls unless an Arduino is connected
+
+
 def next_color():
     # This cycles a global variable through different colors so we 
     # can color the backgrounds of each frame differently and see 
@@ -48,7 +49,6 @@ def default_options( text=None):
         opt["text"] = text
     return opt
 
-# END DEBUG        
 
 # Needed for console Text field
 from Tkinter import Text
@@ -82,9 +82,6 @@ class RishaWindow( object):
             self.rc.set_logging_func( self.append_to_console)
             self.rc.connect_hardware()
         except Exception, e:
-            # ETJ DEBUG
-            print e
-            # END DEBUG
             print("Couldn't find hardware to connect to. Connect manually "
                 "using the interface instead")
     
@@ -291,19 +288,22 @@ class RishaWindow( object):
         
         return imf
     
-    def open_readable_file( self):
+    def open_readable_file( self, file_path=None):
         # TODO: add some preferences so we can remember last-used 
         # directory as the next initialdirectory
         # options: defaultextension, filetypes, initialdir, initialfile, multiple, message, parent, title
-        fts = [("2D DXF files", '.dxf'), ('2D Gcode files', '.gcode')]
-        options = {'initialdir': os.path.join(os.getenv('HOME'), "Desktop"), 
-                    'filetypes':fts}
-        file_path = tkFileDialog.askopenfilename( **options)
-        
-        ext = os.path.splitext( file_path)[1].lower()
-
         gcode_exts = [".ngc", ".gcode"]
         dxf_exts = [".dxf"]
+        # #  ETJ DEBUG
+        # file_path='/Users/jonese/Desktop/_unicorn-logo.dxf'
+        # #  END DEBUG 
+        if not file_path:
+            fts = [("2D DXF files", '.dxf'), ('2D Gcode files', '.gcode')]
+            options = {'initialdir': os.path.join(os.getenv('HOME'), "Desktop"), 
+                        'filetypes':fts}
+            file_path = tkFileDialog.askopenfilename( **options)
+        
+        ext = os.path.splitext( file_path)[1].lower()
         
         # if we've loaded a DXF file, convert it to Gcode
         if ext in dxf_exts:
@@ -341,9 +341,7 @@ class RishaWindow( object):
         for entity in dxf_parser.entities:
             entity.get_gcode(context)
         all_gcode = context.generate( should_print=False) 
-        #  ETJ DEBUG
-        print all_gcode
-        #  END DEBUG        
+        
         gcode_model = GcodeParser().parseString( all_gcode)
         dxf_file.close()
         
@@ -359,34 +357,32 @@ class RishaWindow( object):
         if clear_canvas:
             self.clear_canvas()
         
-        for layer in gcode_model.layers:
-            # FIXME: Always return to origin?  How to transition 
-            # between layers? -ETJ 25 Apr 2014
-            last_x, last_y = origin_x, self.image_canvas.winfo_height() - origin_y
-            for segment in layer.segments:
-                # Gcode has an origin at lower left, Canvas
-                # at upper left.  Invert Y values to account for this
-                next_x = segment.coords['X']
-                next_y = self.image_canvas.winfo_height() - segment.coords['Y']
-                
-                # if segment.style == YAGV.gcodeParser.META:
-                
-                
-                # TODO: Need to ensure that 'fly' is the only line style
-                # we care to avoid here. 
-                if segment.style == YAGV.gcodeParser.FLY:
-                    #  ETJ DEBUG
-                    print( "Drawing line from %f, %f  to %f, %f"%(last_x, last_y, next_x, next_y))
-                    #  END DEBUG 
-                    self.image_canvas.create_line( last_x, last_y, next_x, next_y)
-                #  ETJ DEBUG
-                if segment.style == 'fly':
-                    print( "**  Moving line style %s from %s, %s  to %s, %s"%(segment.style, last_x, last_y, next_x, next_y))
-                    #  END DEBUG                     
-                #  END DEBUG 
-                last_x = next_x
-                last_y = next_y
+        segs = [s for l in gcode_model.layers for s in l.segments ]
         
+        # Start at origin.  
+        last_x, last_y = origin_x, self.image_canvas.winfo_height() - origin_y
+        # Draw all appropriate segments
+        for i, segment in enumerate(segs):
+            # Gcode has an origin at lower left, Canvas
+            # at upper left.  Invert Y values to account for this
+            next_x = segment.coords['X']
+            next_y = self.image_canvas.winfo_height() - segment.coords['Y']
+            
+            if segment.style == gcodeParser.META:
+                # Change laser power as requested.  
+                # This line isn't needed assuming that 
+                # gcode_model.classifySegments() has been run
+                # gcode_model.setLaserPower( segment.coords.get('S', 0))
+                pass
+                
+            if segment.style in [gcodeParser.DRAW, gcodeParser.EXTRUDE]:
+                self.image_canvas.create_line( last_x, last_y, next_x, next_y)
+                
+            elif segment.style == gcodeParser.FLY:
+                pass
+            last_x = next_x
+            last_y = next_y
+    
 def main():
     # FIXME: Change Menu Bar to read "RishaLaser", rather than "Python"
     root = Tk()
@@ -394,7 +390,6 @@ def main():
     root.rowconfigure( 0, weight=1)
     
     r = RishaWindow( root)
-    
     root.mainloop()
     # root.destroy()
     
