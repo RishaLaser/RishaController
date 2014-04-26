@@ -30,12 +30,12 @@ class GCodeContext:
         
         gcode_source += "\n"
         gcode_source += "(end of print job)\n"
-        gcode_source += "M300 S40 (pen up)\n"
+        gcode_source += "M300 S0 (pen up)\n"
         gcode_source += "G4 P%d (wait %dms)\n" % (self.stop_delay, self.stop_delay)
-        gcode_source += "M300 S255 (turn off servo)\n"
+        gcode_source += "M300 S0 (turn off servo)\n"
         gcode_source += "G1 X0 Y0 F3500.00\n"
-        gcode_source += "G92 Z15 F150.00 (go up to finished level)\n"
-        gcode_source += "G92 X0 Y0 Z15 F150.00 (go up to finished level)\n"
+        # gcode_source += "G92 Z15 F150.00 (go up to finished level)\n"
+        # gcode_source += "G92 X0 Y0 Z15 F150.00 (go up to finished level)\n"
         gcode_source += "M18 (drives off)\n"
         
         if should_print:
@@ -44,12 +44,12 @@ class GCodeContext:
         return gcode_source
 
     def start(self):
-        self.codes.append("M300 S30 (pen down)")
+        self.codes.append("M300 S255 (pen down)")
         self.codes.append("G4 P%d (wait %dms)" % (self.start_delay, self.start_delay))
         self.drawing = True
     
     def stop(self):
-        self.codes.append("M300 S40 (pen up)")
+        self.codes.append("M300 S0 (pen up)")
         self.codes.append("G4 P%d (wait %dms)" % (self.stop_delay, self.stop_delay))
         self.drawing = False
 
@@ -60,7 +60,7 @@ class GCodeContext:
                 return
         else:
                 if self.drawing: 
-                    self.codes.append("M300 S40 (pen up)") 
+                    self.codes.append("M300 S0 (pen up)") 
                     self.codes.append("G4 P%d (wait %dms)" % (self.stop_delay, self.stop_delay))
                     self.drawing = False
                     
@@ -75,7 +75,7 @@ class GCodeContext:
             return
         else:
             if self.drawing == False:
-                self.codes.append("M300 S30 (pen down)")
+                self.codes.append("M300 S255 (pen down)")
                 self.codes.append("G4 P%d (wait %dms)" % (self.start_delay, self.start_delay))
                 self.drawing = True
                     
