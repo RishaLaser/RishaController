@@ -261,7 +261,7 @@ class RishaWindow( object):
         imf = Frame( master, default_options())
         
         # Image canvas where we'll load and manipulate images to cut
-        self.image_canvas = Canvas( imf, bg="#ff5")
+        self.image_canvas = Canvas( imf, bg="#C0DEFE")
         self.image_canvas.grid( column=0, row=0, sticky="news")
         
         # Controls that will manipulate the image
@@ -294,12 +294,11 @@ class RishaWindow( object):
         # options: defaultextension, filetypes, initialdir, initialfile, multiple, message, parent, title
         gcode_exts = [".ngc", ".gcode"]
         dxf_exts = [".dxf"]
-        # #  ETJ DEBUG
-        # file_path='/Users/jonese/Desktop/_unicorn-logo.dxf'
-        # #  END DEBUG 
+        
         if not file_path:
             fts = [("2D DXF files", '.dxf'), ('2D Gcode files', '.gcode')]
-            options = {'initialdir': os.path.join(os.getenv('HOME'), "Desktop"), 
+            examples_dir = os.path.join(os.path.split(__file__)[0], 'examples')
+            options = {'initialdir': examples_dir, 
                         'filetypes':fts}
             file_path = tkFileDialog.askopenfilename( **options)
         
@@ -363,6 +362,10 @@ class RishaWindow( object):
         last_x, last_y = origin_x, self.image_canvas.winfo_height() - origin_y
         # Draw all appropriate segments
         for i, segment in enumerate(segs):
+            #  ETJ DEBUG
+            # print '%d \tsegment: %s'%(i, segment)
+            #  END DEBUG 
+            
             # Gcode has an origin at lower left, Canvas
             # at upper left.  Invert Y values to account for this
             next_x = segment.coords['X']
@@ -372,7 +375,7 @@ class RishaWindow( object):
                 # Change laser power as requested.  
                 # This line isn't needed assuming that 
                 # gcode_model.classifySegments() has been run
-                # gcode_model.setLaserPower( segment.coords.get('S', 0))
+                gcode_model.setLaserPower( segment.coords.get('S', 0))
                 pass
                 
             if segment.style in [gcodeParser.DRAW, gcodeParser.EXTRUDE]:

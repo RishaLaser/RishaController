@@ -4,7 +4,7 @@
 # https://github.com/jonathanwin/yagv/blob/master/gcodeParser.py
 
 import math
-import re
+import os, sys, re
 
 FLY, EXTRUDE, RETRACT, RESTORE, META, DRAW = (  "Fly", "Extrude", "Retract",  
                                                 "Restore", "Meta", "Draw")
@@ -32,10 +32,6 @@ class GcodeParser:
                     
     def parseFile(self, path):
         # read the gcode file
-        #  ETJ DEBUG
-        print '\tpath: %s'% path
-
-        #  END DEBUG 
         with open( path,'r') as f:
             gcodeString = f.read()
         return self.parseString( gcodeString)
@@ -211,6 +207,7 @@ class GcodeModel:
             "F": coords["F"],   # no feedrate offset
             "E": self.offset["E"] + coords["E"]
         }
+        
         seg = Segment(
             gcode,
             absolute,
@@ -245,8 +242,7 @@ class GcodeModel:
         # Record this as a segment so that a run through all segments in 
         # order will show this change in state.
         
-        # If we were just to encode them as M300 S0 for laser on and M300 S255
-        # for full strength, that would get us someplace -ETJ 20 Feb 2014
+        # Encode them as M300 S0 for laser off and M300 S255 for full strength
         self.setLaserPower( args.get( 'S', 0))
         coords = dict(self.relative)
         coords.update( {'S': self.laserPower})
@@ -296,39 +292,41 @@ class GcodeModel:
         for seg in self.segments:
             # Possible styles:
             # FLY, EXTRUDE, RETRACT,  RESTORE, META, DRAW
-            
-            # default style is fly (move, no extrusion)
             style = FLY
             
-            # Record change in laser state
-            if seg.gcode == 'M300':
-                seg.style = META
-                self.setLaserPower( seg.coords.get('S',0))
-                # A change in laser state doesn't change axes, so
-                # skip the steps below where those are updated
-                continue
-                
             newX, oldX = seg.coords['X'], coords['X']
             newY, oldY = seg.coords['Y'], coords['Y']
             newZ, oldZ = seg.coords['Z'], coords['Z']
             newE, oldE = seg.coords['E'], coords['E']
-                
+            
+            # Record change in laser state
+            if seg.gcode == 'M300':
+                style = META
+                self.setLaserPower( seg.coords.get('S',0))
+            
             # no horizontal movement, but extruder movement: retraction/refill
-            if ( oldX == newX and oldY == newY and oldE != newE):
-                style = RETRACT if ( newE < oldE) else RESTORE
+            elif ( oldX == newX and oldY == newY and oldE != newE):
+                if newE < oldE: style = RETRACT
+                if newE > oldE: style = RESTORE
             
             # some horizontal movement, and positive extruder movement: extrusion
-            if ( (oldX != newX or oldY != newY) and newE > oldE):
+            elif ( (oldX != newX or oldY != newY) and newE > oldE):
                 style = EXTRUDE
             
             elif ( (oldX != newX or oldY != newY) and self.laserIsOn()):
                 style = DRAW
             
             # positive extruder movement in a different Z signals a layer change for this segment
-            if ( newE > oldE and newZ != currentLayerZ):
+            elif ( newE > oldE and newZ != currentLayerZ):
                 style = FLY
                 currentLayerZ = newZ
                 currentLayerIdx += 1
+            elif ( oldX != newX or oldY != newY):
+                style = FLY
+            else:    
+                # Shouldn't reach this
+                print "Failed to classify segment: "
+                print seg
             
             # set style and layer in segment
             seg.style = style
@@ -437,21 +435,21 @@ class GcodeModel:
         return "<GcodeModel: len(segments)=%d, len(layers)=%d, distance=%f, extrudate=%f, bbox=%s>"%(len(self.segments), len(self.layers), self.distance, self.extrudate, self.bbox)
     
 class Segment:
-    def __init__(self, gcode, coords, lineNb, line, orig_str=''):
+    def __init__(self, gcode, coords, lineNb, line, orig_str=None):
         self.gcode = gcode
         self.coords = coords
         self.lineNb = lineNb
         self.line = line
         self.orig_str = orig_str
         self.style = None
-        self.layerIdx = None
-        self.distance = None
-        self.extrudate = None
+        self.layerIdx = 0
+        self.distance = 0
+        self.extrudate = 0
     def __str__(self):
         orig = ", Orig Gcode: %s"%self.orig_str if self.orig_str else  ''
         
         s = ("<Segment: gcode=%s, lineNb=%d, style=%s, layerIdx=%d, "
-                "distance=%.2f, extrude=%f%s>"
+                "distance=%.2f, extrude=%.2f%s>"
                 %(self.gcode, self.lineNb, self.style, 
                 self.layerIdx, self.distance, self.extrudate, orig))
         return s
@@ -468,9 +466,18 @@ class Layer:
         
         
 if __name__ == '__main__':
-    path = "test.gcode"
-
-    parser = GcodeParser()
-    model = parser.parseFile(path)
-
-    print model
+    # path = "test.gcode"
+    # 
+    # parser = GcodeParser()
+    # model = parser.parseFile(path)
+    # 
+    # print model
+    
+    #  ETJ DEBUG
+    # For debug purposes only
+    import sys, os
+    up = os.path.split(os.path.split( __file__)[0])[0]
+    sys.path.append( up)
+    import risha_window
+    risha_window.main()
+    #  END DEBUG 
