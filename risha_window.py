@@ -2,8 +2,21 @@
 # -*- coding: UTF-8 -*-
 import os, sys, re
 from Tkinter import *
-import resha_controller
-from resha_controller import ReshaController
+import tkFileDialog
+
+import risha_controller
+from risha_controller import RishaController
+
+# Gcode parsing
+from YAGV import gcodeParser
+from YAGV.gcodeParser import GcodeParser 
+
+# DXF Parsing
+from scribbles.import_dxf import DxfParser
+from scribbles.context import GCodeContext
+
+root = None
+
 
 CUR_DEFAULT_COLOR = 100
 DEBUG =False
@@ -11,8 +24,9 @@ DEBUG =False
 if DEBUG:
     Frame = LabelFrame # FIXME: remove this; it just shows where frames' borders are
 
-# FIXME: Need to disable all controls unless an Arduino is connected
-# ETJ DEBUG
+# FIXME: Need to disable all jog controls unless an Arduino is connected
+
+
 def next_color():
     # This cycles a global variable through different colors so we 
     # can color the backgrounds of each frame differently and see 
@@ -35,7 +49,6 @@ def default_options( text=None):
         opt["text"] = text
     return opt
 
-# END DEBUG        
 
 # Needed for console Text field
 from Tkinter import Text
@@ -52,10 +65,10 @@ class ReadOnlyText(Text):
         self.delete = \
             self.redirector.register("delete", lambda *args, **kw: "break")
 
-class ReshaWindow( object):
+class RishaWindow( object):
     def __init__( self, master):
         # Create laser controller object
-        self.rc = ReshaController( connect_immediately=False)
+        self.rc = RishaController( connect_immediately=False)
         
         # Set up UI
         self.declare_instance_widgets()
@@ -69,9 +82,6 @@ class ReshaWindow( object):
             self.rc.set_logging_func( self.append_to_console)
             self.rc.connect_hardware()
         except Exception, e:
-            # ETJ DEBUG
-            print e
-            # END DEBUG
             print("Couldn't find hardware to connect to. Connect manually "
                 "using the interface instead")
     
@@ -108,10 +118,7 @@ class ReshaWindow( object):
         self.pause_cut_button = None
         self.stop_cut_button = None
         
-        # If we also set their actions here, we can control
-        # the application's behavior from this centralized
-        # location rather than mixed in with the UI code.  This
-        # should help separate the appearance from the behavior.
+        # UI actions are set in connect_instance_widgets()
         
     def set_up_ui( self, master):
         self.frame = Frame( master, default_options())
@@ -152,6 +159,16 @@ class ReshaWindow( object):
         
         self.jog_distance_var.trace( "w", jog_dist_call)
         
+        # Load/ Start/ Stop/ Pause buttons
+        # Image controls
+        # TODO: These need logic to en-/dis-able the buttons
+        # according to current state( e.g., pause is disabled when not 
+        # running, start disabled when paused)
+        self.load_image_button.configure( command=self.open_readable_file)
+        # self.start_cut_button.configure( command=self.rc.run_gcode)
+        # self.pause_cut_button.configure( command=self.rc.toggle_pause_gcode) 
+        # self.stop_cut_button.configure( command=self.rc.stop_gcode)
+        
         
     def grid_win( self, master):
         grid = Frame( master, default_options())
@@ -178,7 +195,7 @@ class ReshaWindow( object):
             self.portname_var = StringVar( jof)
             unk = "Unknown Port"
             self.portname_var.set( unk)
-            port_options = resha_controller.find_likely_arduino() + ["Other"]
+            port_options = risha_controller.find_likely_arduino() + ["Other"]
             self.portname_dropdown = OptionMenu( jof, self.portname_var, port_options)
             self.connected_label.grid( column=0, row=0)
             self.portname_dropdown.grid( column=1, row=0)
@@ -250,8 +267,18 @@ class ReshaWindow( object):
         # Controls that will manipulate the image
         canvas_controls = Frame(imf, default_options())
         canvas_controls.grid( column=0, row=1, sticky="ew")
-        b = Button( canvas_controls, default_options("Image controls here"))
-        b.grid()
+        
+        # Image controls
+        # TODO: make all buttons same size
+        # TODO: Use images for control buttons & add tooltips
+        self.load_image_button = Button( canvas_controls, default_options("Load Image"))
+        self.start_cut_button  = Button( canvas_controls, default_options("Start"))
+        self.pause_cut_button  = Button( canvas_controls, default_options("Pause/Resume"))
+        self.stop_cut_button   = Button( canvas_controls, default_options("Stop"))        
+        self.load_image_button.grid( row=0, column=0)
+        self.start_cut_button.grid(  row=0, column=1)
+        self.pause_cut_button.grid(  row=0, column=2)
+        self.stop_cut_button.grid(   row=0, column=3)
         
         # Everything stretches horizontally
         imf.columnconfigure(0, weight=1)
@@ -260,15 +287,109 @@ class ReshaWindow( object):
         imf.rowconfigure( 1, weight=0)
         
         return imf
+    
+    def open_readable_file( self, file_path=None):
+        # TODO: add some preferences so we can remember last-used 
+        # directory as the next initialdirectory
+        # options: defaultextension, filetypes, initialdir, initialfile, multiple, message, parent, title
+        gcode_exts = [".ngc", ".gcode"]
+        dxf_exts = [".dxf"]
+        # #  ETJ DEBUG
+        # file_path='/Users/jonese/Desktop/_unicorn-logo.dxf'
+        # #  END DEBUG 
+        if not file_path:
+            fts = [("2D DXF files", '.dxf'), ('2D Gcode files', '.gcode')]
+            options = {'initialdir': os.path.join(os.getenv('HOME'), "Desktop"), 
+                        'filetypes':fts}
+            file_path = tkFileDialog.askopenfilename( **options)
         
-
+        ext = os.path.splitext( file_path)[1].lower()
+        
+        # if we've loaded a DXF file, convert it to Gcode
+        if ext in dxf_exts:
+            gcode_model = self.convert_dxf_to_gcode( file_path)
+            
+        # if we've opened a Gcode file, split it on lines
+        elif ext in gcode_exts:
+            gcode_model = GcodeParser().parseFile( file_path)
+        else:
+            # shouldn't get here
+            raise ValueError( "Unable to handle file %s"%file_path)
+            
+        # NOTE: need to detect strange line splits (\n\r, \r\n, etc.)?
+        self.rc.set_loaded_gcode( gcode_model)        
+        self.append_to_console( "Loaded file: %s"%file_path)
+        self.draw_gcode( gcode_model)
+    
+    # NOTE: this should probably be in the controller object, not the window
+    def convert_dxf_to_gcode( self, dxf_path):
+        dxf_file = open( dxf_path, "r")
+        
+        dxf_parser = DxfParser( dxf_file)
+        
+        # FIXME: need better values for these details.  The following are
+        # defaults taken from scribbles.py
+        z_height = 0
+        z_feedrate = 150
+        xy_feedrate = 2000
+        start_delay = 60
+        stop_delay = 120
+        line_width = 0.5
+        
+        context = GCodeContext(z_feedrate, z_height, xy_feedrate, start_delay, stop_delay, line_width, dxf_path)
+        dxf_parser.parse()
+        for entity in dxf_parser.entities:
+            entity.get_gcode(context)
+        all_gcode = context.generate( should_print=False) 
+        
+        gcode_model = GcodeParser().parseString( all_gcode)
+        dxf_file.close()
+        
+        return gcode_model
+        
+    def clear_canvas( self):
+        self.image_canvas.delete('all')
+    
+    # TODO: add transform to this method, so we can move, scale, & rotate
+    # an arbitrary piece of gcode
+    def draw_gcode( self, gcode_model, clear_canvas=True, origin_pt=None):
+        origin_x, origin_y = origin_pt if origin_pt else (0, 0)
+        if clear_canvas:
+            self.clear_canvas()
+        
+        segs = [s for l in gcode_model.layers for s in l.segments ]
+        
+        # Start at origin.  
+        last_x, last_y = origin_x, self.image_canvas.winfo_height() - origin_y
+        # Draw all appropriate segments
+        for i, segment in enumerate(segs):
+            # Gcode has an origin at lower left, Canvas
+            # at upper left.  Invert Y values to account for this
+            next_x = segment.coords['X']
+            next_y = self.image_canvas.winfo_height() - segment.coords['Y']
+            
+            if segment.style == gcodeParser.META:
+                # Change laser power as requested.  
+                # This line isn't needed assuming that 
+                # gcode_model.classifySegments() has been run
+                # gcode_model.setLaserPower( segment.coords.get('S', 0))
+                pass
+                
+            if segment.style in [gcodeParser.DRAW, gcodeParser.EXTRUDE]:
+                self.image_canvas.create_line( last_x, last_y, next_x, next_y)
+                
+            elif segment.style == gcodeParser.FLY:
+                pass
+            last_x = next_x
+            last_y = next_y
+    
 def main():
+    # FIXME: Change Menu Bar to read "RishaLaser", rather than "Python"
     root = Tk()
     root.columnconfigure( 0, weight=1)
     root.rowconfigure( 0, weight=1)
     
-    r = ReshaWindow( root)
-    
+    r = RishaWindow( root)
     root.mainloop()
     # root.destroy()
     
