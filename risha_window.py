@@ -170,10 +170,9 @@ class RishaWindow( object):
         # according to current state( e.g., pause is disabled when not 
         # running, start disabled when paused)
         self.load_image_button.configure( command=self.open_readable_file)
-        self.start_cut_button.configure( command=self.rc.run_gcode)
+        self.start_cut_button.configure( command=self.run_gcode)
         self.pause_cut_button.configure( command=self.rc.toggle_pause_gcode) 
         self.stop_cut_button.configure( command=self.rc.stop_gcode)
-        
         
     def grid_win( self, master):
         grid = Frame( master, default_options())
@@ -351,6 +350,23 @@ class RishaWindow( object):
         
         return gcode_model
         
+    def set_jog_buttons_enabled(self, enabled=True):
+        should_enable = 'normal' if enabled else 'disabled'
+        self.north_button.config( state=should_enable)
+        self.south_button.config( state=should_enable)
+        self.east_button.config( state=should_enable)
+        self.west_button.config( state=should_enable)
+                
+    def run_gcode( self):
+        # Disable applicable buttons while we're running
+        self.rc.run_gcode( start_callback=self.gcode_starting, end_callback=self.gcode_finished)
+    
+    def gcode_starting( self):
+        self.set_jog_buttons_enabled( False)
+    
+    def gcode_finished( self):
+        self.set_jog_buttons_enabled( True)
+    
     def clear_canvas( self):
         self.image_canvas.delete('all')
     
@@ -361,12 +377,10 @@ class RishaWindow( object):
         if clear_canvas:
             self.clear_canvas()
         
-        segs = [s for l in gcode_model.layers for s in l.segments ]
-        
         # Start at origin.  
         last_x, last_y = origin_x, self.image_canvas.winfo_height() - origin_y
         # Draw all appropriate segments
-        for i, segment in enumerate(segs):
+        for i, segment in enumerate(gcode_model.allSegments()):
             #  ETJ DEBUG
             # print '%d \tsegment: %s'%(i, segment)
             #  END DEBUG 

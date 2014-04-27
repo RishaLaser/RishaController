@@ -44,21 +44,25 @@ def print_wrapper( a_str):
     print a_str
 
 class GcodeRunnerThread( threading.Thread):
-    def __init__(self, controller_obj, gcode_lines):
+    def __init__(self, controller_obj, gcode_model, start_callback=None, end_callback=None):
         threading.Thread.__init__(self)
-        self.gcode_lines = gcode_lines
         self.controller = controller_obj
+        self.gcode_model = gcode_model
+        self.start_callback = start_callback
+        self.end_callback = end_callback
         
-        self.current_line = 0
+        self.current_line_num = 0
         self.is_paused = False
         self.is_running = False
 
     def run(self):
+        if self.start_callback:
+            self.start_callback()
         if not self.is_running:
             self.is_running = True
             # FIXME: need a way to identify here whether the run finished 
             # successfully, was paused, or encountered an error
-            last_line_run = self.run_gcode( start_line=self.current_line)
+            last_line_run = self.run_gcode( start_line=self.current_line_num)
         
     def toggle_pause( self):
         if self.is_running:
@@ -67,7 +71,7 @@ class GcodeRunnerThread( threading.Thread):
     def cancel_run( self):
         self.is_running = False
         self.is_paused = False
-        self.current_line = None
+        self.current_line_num = None
         
     def sendable_part_of_line( self, gcode_line):
         # remove any comments or other code that shouldn't be sent to the machine
@@ -78,16 +82,30 @@ class GcodeRunnerThread( threading.Thread):
         
     def did_finish( self):
         self.is_running = False
-        self.current_line = None
+        self.current_line_num = None
+        if self.end_callback:
+            self.end_callback()
         
     def run_gcode( self, start_line=0):
-        for ordinal_line, line in enumerate( self.gcode_lines[start_line:]):
-            line_num = start_line + ordinal_line
+        segs = self.gcode_model.allSegments()
+        # find first point in allSegments with line number >= start_line
+        start_line_index = 0
+        while start_line_index < len( segs):
+            if segs[start_line_index].lineNb < start_line:
+                start_line_index += 1
+            else:
+                break # Found the starting point. Move on
+                
+        # Starting at the designated start line, send everything to 
+        # the Arduino
+        for ordinal_line, segment in enumerate( segs[start_line_index:]):
+            line_num = segment.lineNb
+            line = segment.line
             
             if not self.is_running or self.is_paused:
                 return line_num
             
-            self.current_line = line_num                
+            self.current_line_num = line_num                
             
             line = self.sendable_part_of_line( line)
             # If the line is all comment, (and thus we get back nothing from 
@@ -95,7 +113,6 @@ class GcodeRunnerThread( threading.Thread):
             if line:
                 # TODO: catch any errors returned by hardware and auto-pause the controller            
                 res = self.controller.grbl_send( line)
-            
             # NOTE: off-by-one error?  Do we want to return *last line completed*
             # or *next line*?
             line_num += 1
@@ -162,7 +179,7 @@ class RishaController(object):
             # dummy_serial.VERBOSE = True
             ser = dummy_serial.Serial( port=port_name, baudrate=GRBL_BAUD, timeout=0.25)            
         else:
-        ser = serial.Serial( port_name, GRBL_BAUD, timeout=0.25)
+            ser = serial.Serial( port_name, GRBL_BAUD, timeout=0.25)
         
         # NOTE: side effect.  Setting self.serial here
         self.serial = ser
@@ -192,8 +209,8 @@ class RishaController(object):
         # from the RishaController to a console pane
         self.logging_func = func
     
-    def set_loaded_gcode( self, gcode_lines):
-        self.loaded_gcode = gcode_lines
+    def set_loaded_gcode( self, gcode_model):
+        self.loaded_gcode = gcode_model
     
     def grbl_send( self, gcode):
         line_delimiter = "\r\n"
@@ -305,9 +322,9 @@ class RishaController(object):
         self.jog_relative( abs_distance, 0);
 
     
-    def run_gcode( self, gcode_lines=None):
-        gcode_lines = gcode_lines or self.loaded_gcode
-        t = GcodeRunnerThread( self, gcode_lines)
+    def run_gcode( self, gcode_model=None, start_callback=None, end_callback=None):
+        gcode_model = gcode_model or self.loaded_gcode
+        t = GcodeRunnerThread( self, gcode_model, start_callback, end_callback)
         self.gcode_runner_thread = t
         # TODO: validate that we can run code - we're not already running
         # something else, the hardware is connected, etc.
@@ -316,6 +333,7 @@ class RishaController(object):
         print "Beginning GcodeRunnerThread"
         # END DEBUG
         self.gcode_runner_thread.run()
+        
         # ETJ DEBUG
         print "gcode_runner_thread has begun"
         # END DEBUG

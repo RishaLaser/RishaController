@@ -155,7 +155,6 @@ class BBox(object):
         self.zmax = max(self.zmax, coords["Z"])
         
 class GcodeModel:
-    
     def __init__(self, parser):
         # save parser for messages
         self.parser = parser
@@ -182,7 +181,6 @@ class GcodeModel:
         self.bbox = None
         self.setLaserPower(0)
     
-
     def do_G0( self, args):
         return self.do_G1( args, gcode="G0")
     
@@ -431,6 +429,15 @@ class GcodeModel:
         self.splitLayers()
         self.calcMetrics()
 
+    def allSegments( self):
+        allSegs = set(self.segments)
+        for l in self.layers:
+            allSegs = allSegs.union( set( l.segments))
+            
+        allSegs = list( allSegs)
+        allSegs.sort( key=lambda x: x.lineNb)
+        return allSegs
+    
     def __str__(self):
         return "<GcodeModel: len(segments)=%d, len(layers)=%d, distance=%f, extrudate=%f, bbox=%s>"%(len(self.segments), len(self.layers), self.distance, self.extrudate, self.bbox)
     
