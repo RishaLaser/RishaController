@@ -26,6 +26,8 @@ if DEBUG:
 
 # TODO: Disable all jog controls unless an Arduino is connected
 
+CONNECTED, DISCONNECTED = ("Connected", "Not Connected")
+
 
 def next_color():
     # This cycles a global variable through different colors so we 
@@ -69,7 +71,7 @@ class RishaWindow( object):
     def __init__( self, master):
         # Create laser controller object
         #  ETJ DEBUG
-        #FIXME: remove this dummy portname once there's an actual arduino to test with
+        #FIXME: remove this dummy port_name once there's an actual arduino to test with
         self.rc = RishaController( port_name='/dev/tty.usb1234',connect_immediately=False)
         # self.rc = RishaController( connect_immediately=False)
         #  END DEBUG 
@@ -81,10 +83,13 @@ class RishaWindow( object):
         # widgets have been instantiated
         self.connect_instance_widgets()        
         
+
+
+
         # Connect controller to actual hardware
         try: 
             self.rc.set_logging_func( self.append_to_console)
-            self.rc.connect_hardware()
+            # self.rc.connect_hardware()
         except Exception, e:
             print e
             print("Couldn't find hardware to connect to. Connect manually "
@@ -96,8 +101,10 @@ class RishaWindow( object):
         # so they can be accessed from anywhere in the class.
         
         # Connection monitor
-        self.connected_label = None
-        self.portname_dropdown = None
+        self.connection_status_label = None
+        self.toggle_connect_button = None
+        self.port_textfield = None
+        # self.port_name_dropdown = None
         
         # Jog buttons
         self.north_button = None
@@ -188,25 +195,51 @@ class RishaWindow( object):
         grid.grid()
         return grid
     
+
+    def toggle_connection( self):
+        if self.connection_status_var.get() == DISCONNECTED:
+            ser = None
+            try:
+                pnv = self.port_name_var.get()
+                ser = self.rc.connect_hardware( port_name=pnv)
+            except Exception, e:
+                print "Unable to connect to port: %s\nError: %s"%(pnv, e)
+            
+            if ser: # Successfully connected:
+                self.connection_status_var.set( CONNECTED)
+                self.toggle_connect_button.configure( text='Disconnect')
+                self.set_jog_buttons_enabled( True)
+        else:
+            self.rc.disconnect_hardware()
+            self.connection_status_var.set( DISCONNECTED)
+            self.toggle_connect_button.configure( text='Connect')   
+            self.set_jog_buttons_enabled( False)         
+            
+            
     def make_jog_frame( self, master):
         jof = Frame( master, default_options())
         
         # Connection monitor
-        # TODO: put this online, and provide a mechanism to connect, disconnect,
-        # and select appropriate ports
-        if False:
-            self.connected_label = Label( jof, text="Not connected: ")
-            self.portname_var = StringVar( jof)
-            unk = "Unknown Port"
-            self.portname_var.set( unk)
-            port_options = risha_controller.find_likely_arduino() + ["Other"]
-            self.portname_dropdown = OptionMenu( jof, self.portname_var, port_options)
-            self.connected_label.grid( column=0, row=0)
-            self.portname_dropdown.grid( column=1, row=0)
+        # TODO: Incorporate likely default boards for all OSes so typing isn't required
+        if True:
+            self.connection_status_var = StringVar(jof) 
+            self.connection_status_var.set( DISCONNECTED)
+            self.connection_status_label = Label( jof, textvar=self.connection_status_var)
+
+            self.toggle_connect_button = Button( jof, text='Connect', command=self.toggle_connection)
+            
+            self.port_name_var = StringVar( jof)
+            self.port_name_var.set( 'Enter Port name')            
+            self.port_textfield = Entry( jof, textvar=self.port_name_var) 
+            
+            self.connection_status_label.grid(  column=0, row=0)
+            self.port_textfield.grid(           column=1, row=0)
+            self.toggle_connect_button.grid(    column=2, row=0)
         
         # Jog buttons
         jcq = self.jog_control_quad( jof)
         jcq.grid( column=0, row=1, columnspan=3)
+        self.set_jog_buttons_enabled( False)
         
         # Jog distance Dropdown
         jog_distance_label = Label( jof, text="Jog Distance:")

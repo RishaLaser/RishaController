@@ -19,25 +19,29 @@ CUTTER_MAX_X = 300
 CUTTER_MAX_Y = 300
 
 def find_likely_arduino():
+    # Returns a results, error pair:
+    # Either:  ( [possible, valid, ports], '')
+    # or        ( [], error_message)
+    
+    ards = []
+    err = ''
+    
     # Mac
     if sys.platform == 'darwin':
         search_dir = '/dev/'
         ards = [ x for x in os.listdir(search_dir) if x.startswith( 'tty.u')]
         ards = [os.path.join( search_dir, a) for a in ards]
 
-        if ards: 
-            return ards
-        else:
-            print "Can't automatically find a connected Arduino. Is one connected?"
-            return ards
+        if not ards: 
+            err = "Can't automatically find a connected Arduino. Is one connected?"
     # Linux
     elif sys.platform == 'linux2':
-        print "Needed: automatic detection routine for connected Arduino"
-        return []
+        err = "Linux: Needed: automatic detection routine for connected Arduino"
     # Windows
     elif sys.platform.startswith('win'):
-        print "Needed: automatic detection routine for connected Arduino" 
-        []
+        err = "Windows: Needed: automatic detection routine for connected Arduino" 
+    
+    return (ards, err)
 
     
 def print_wrapper( a_str):
@@ -149,7 +153,9 @@ class RishaController(object):
         
         self.port_name = port_name
         if not self.port_name:
-            self.port_name = find_likely_arduino()
+            port_names, err = find_likely_arduino()
+            if port_names:
+                self.port_name = port_names[0]
         self.serial= None
         if connect_immediately:
             self.connect_hardware( self.port_name)
@@ -167,7 +173,7 @@ class RishaController(object):
     def connect_hardware( self, port_name=None):
         port_name = port_name or self.port_name
         if not port_name:
-            port_names = find_likely_arduino()
+            port_names, err = find_likely_arduino()
             if not port_names:
                 raise ValueError("No arduino found. Try explicitly supplying a "
                 "port name to the connect_hardware() function.")
