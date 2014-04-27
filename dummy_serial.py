@@ -71,6 +71,7 @@ Might be monkey-patched in the calling test module.
 
 """
 
+LF = '\n'
 
 class Serial():
     """Dummy (mock) serial port for testing purposes.
@@ -98,7 +99,7 @@ class Serial():
             self.baudrate = kwargs['baudrate']
         except:
             self.baudrate = DEFAULT_BAUDRATE
-
+        self.readBuffer = ''
         if VERBOSE:
             _print_out('\nInitializing dummy_serial')
             _print_out('dummy_serial initialization args: ' + repr(args) )
@@ -157,13 +158,43 @@ class Serial():
             inputstring = str(inputdata, encoding='latin1')
         else:
             inputstring = inputdata
-
+            
         if not self._isOpen:
             raise IOError('Trying to write to dummy_serial, but the port is not open. Given:' + repr(inputdata))
-
+            
         self._latestWrite = inputstring
-
-
+        
+        # Prepare the response buffer so it can be queried & emptied on read
+        try:
+            response = RESPONSES[self._latestWrite]
+        except:
+            response = DEFAULT_RESPONSE
+        self.readBuffer += response
+        # END DEBUG 
+    
+    def flushInput( self):
+        self.readBuffer = ''
+    
+    def inWaiting( self):
+        return len( self.readBuffer)
+    
+    def readline(self, size=None, eol=LF):
+        """read a line which is terminated with end-of-line (eol) character
+        ('\n' by default) or until timeout."""
+        leneol = len(eol)
+        line = bytearray()
+        while True:
+            c = self.read(1)
+            if c:
+                line += c
+                if line[-leneol:] == eol:
+                    break
+                if size is not None and len(line) >= size:
+                    break
+            else:
+                break
+        return bytes(line)        
+        
     def read(self, numberOfBytes):
         """Read from a port on dummy_serial.
 
@@ -188,29 +219,21 @@ class Serial():
         if not self._isOpen:
             raise IOError('Trying to read from dummy_serial, but the port is not open.')
 
-        # Do the actual reading
-        try:
-            response = RESPONSES[self._latestWrite]
-        except:
-            response = DEFAULT_RESPONSE
-        
-        # TODO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        # Adapt the behavior to better mimic the Windows behavior
-        
-        # Simulate the influence of numberOfBytes
-        returnstring = response
-        #if response == DEFAULT_RESPONSE:
-            #pass
-        #elif len(response) < numberOfBytes: # Wait for timeout
-            #_print_out('WARNING!! The response is shorter than given numberOfBytes to read. ' + \
-                #'Response: {!r} (length = {}), numberOfBytes: {}'.format( \
-                #response, len(response), numberOfBytes))
-            #time.sleep(self.timeout)
-        #elif len(response) > numberOfBytes: # Loose trailing bytes
-            #_print_out('WARNING!! The response is longer than given numberOfBytes to read. ' + \
-                #'Some bytes will be lost! Response: {!r} (length = {}), numberOfBytes: {}'.format( \
-                #response, len(response), numberOfBytes))
-            #returnstring = response[:numberOfBytes]
+        elif len(self.readBuffer) < numberOfBytes: # Wait for timeout
+            _print_out('WARNING!! The response is shorter than given '
+                        'numberOfBytes to read. Response: '
+                        '%s (length = %d), numberOfBytes: %d'%
+                        ( self.readBuffer, len(self.readBuffer), numberOfBytes))
+            time.sleep(self.timeout)
+            return
+        elif len(self.readBuffer) >= numberOfBytes: # Loose trailing bytes
+            # if len(self.readBuffer) > numberOfBytes:
+            #     _print_out('WARNING!! The response is longer than given numberOfBytes to read. ' + \
+            #         'Some bytes will be lost! Response: {!r} (length = {}), numberOfBytes: {}'.format( \
+            #         response, len(response), numberOfBytes))
+            returnstring = self.readBuffer[:numberOfBytes]
+            # Remove the read bytes from readBuffer
+            self.readBuffer = self.readBuffer[numberOfBytes:]
         
         if VERBOSE:
             _print_out('dummy_serial latest written data: {!r}'.format(self._latestWrite))
