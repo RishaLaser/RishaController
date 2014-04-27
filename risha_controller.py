@@ -4,6 +4,11 @@ import os, sys, re
 import serial, time
 import threading
 
+# For testing purposes only -ETJ 26 Apr 2014
+SERIAL_MOCK = True
+if SERIAL_MOCK:
+    import dummy_serial
+
 GRBL_BAUD = 9600
 DEBUG = True
 
@@ -130,7 +135,7 @@ class RishaController(object):
             self.port_name = find_likely_arduino()
         self.serial= None
         if connect_immediately:
-            self.serial = self.connect_hardware( self.port_name)
+            self.connect_hardware( self.port_name)
             
             # TODO: handle error here as needed
         
@@ -143,17 +148,25 @@ class RishaController(object):
         return self.max_y - self.min_y
     
     def connect_hardware( self, port_name=None):
+        port_name = port_name or self.port_name
         if not port_name:
             port_names = find_likely_arduino()
             if not port_names:
-                raise ValueError("No arduino found.  Try explicitly supplying a port "
-                "name to the connect_hardware() function.")
+                raise ValueError("No arduino found. Try explicitly supplying a "
+                "port name to the connect_hardware() function.")
             port_name = port_names[0]
             
+        if SERIAL_MOCK:
+            # NOTE: For testing purposes, -ETJ 26 Apr 2014
+            dummy_serial.DEFAULT_RESPONSE = 'ok\n'
+            # dummy_serial.VERBOSE = True
+            ser = dummy_serial.Serial( port=port_name, baudrate=GRBL_BAUD, timeout=0.25)            
+        else:
         ser = serial.Serial( port_name, GRBL_BAUD, timeout=0.25)
-        self.wake_hardware( ard_ser=ser)
-        # NOTE: side effect. connect_hardware() sets instance variable
+        
+        # NOTE: side effect.  Setting self.serial here
         self.serial = ser
+        self.wake_hardware( ard_ser=ser)
         return ser
     
     def disconnect_hardware( self, ard_ser=None):
@@ -189,7 +202,6 @@ class RishaController(object):
         report = "Sending gcode: <%s>"%gcode
         self.logging_func( report)
         
-
         # FIXME:  how do we listen for errors?
         if not gcode.endswith( line_delimiter):
             gcode += line_delimiter        
@@ -206,11 +218,9 @@ class RishaController(object):
         while self.serial.inWaiting() > 0:
             res = self.serial.readline()
             self.logging_func( res)
-
-        return res
         
-
-
+        return res
+    
     def set_relative_mode( self, mode):
         self.grbl_send( "G91" if mode else "G90")
         self.relative_mode = mode;
@@ -324,8 +334,8 @@ class RishaController(object):
         
 # ETJ DEBUG
 # TODO: remove this; it's just for convenience when debugging so that
-# the correct program gets run regardless of the focussed window
+# the correct program gets run regardless of the focused file in the IDE
 if __name__ == '__main__':
     import risha_window
     risha_window.main()
-
+# END DEBUG

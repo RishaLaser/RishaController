@@ -22,9 +22,9 @@ CUR_DEFAULT_COLOR = 100
 DEBUG =False
 
 if DEBUG:
-    Frame = LabelFrame # FIXME: remove this; it just shows where frames' borders are
+    Frame = LabelFrame # TODO: remove this; it just shows where frames' borders are
 
-# FIXME: Need to disable all jog controls unless an Arduino is connected
+# TODO: Disable all jog controls unless an Arduino is connected
 
 
 def next_color():
@@ -68,7 +68,11 @@ class ReadOnlyText(Text):
 class RishaWindow( object):
     def __init__( self, master):
         # Create laser controller object
-        self.rc = RishaController( connect_immediately=False)
+        #  ETJ DEBUG
+        #FIXME: remove this dummy portname once there's an actual arduino to test with
+        self.rc = RishaController( port_name='/dev/tty.usb1234',connect_immediately=False)
+        # self.rc = RishaController( connect_immediately=False)
+        #  END DEBUG 
         
         # Set up UI
         self.declare_instance_widgets()
@@ -82,6 +86,7 @@ class RishaWindow( object):
             self.rc.set_logging_func( self.append_to_console)
             self.rc.connect_hardware()
         except Exception, e:
+            print e
             print("Couldn't find hardware to connect to. Connect manually "
                 "using the interface instead")
     
