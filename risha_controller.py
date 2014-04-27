@@ -5,7 +5,7 @@ import serial, time
 import threading
 
 # For testing purposes only -ETJ 26 Apr 2014
-SERIAL_MOCK = True
+SERIAL_MOCK = False
 if SERIAL_MOCK:
     import dummy_serial
 

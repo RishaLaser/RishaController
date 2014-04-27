@@ -70,11 +70,7 @@ class ReadOnlyText(Text):
 class RishaWindow( object):
     def __init__( self, master):
         # Create laser controller object
-        #  ETJ DEBUG
-        #FIXME: remove this dummy port_name once there's an actual arduino to test with
-        self.rc = RishaController( port_name='/dev/tty.usb1234',connect_immediately=False)
-        # self.rc = RishaController( connect_immediately=False)
-        #  END DEBUG 
+        self.rc = RishaController( connect_immediately=False)
         
         # Set up UI
         self.declare_instance_widgets()
