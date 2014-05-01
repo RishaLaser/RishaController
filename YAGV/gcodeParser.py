@@ -232,6 +232,8 @@ class GcodeModel:
                 # transfer value from relative to offset
                 self.offset[axis] += self.relative[axis] - args[axis]
                 self.relative[axis] = args[axis]
+            elif axis.upper() == 'F':
+                self.absolute['F'] = args[axis]
             else:
                 self.warn("Unknown axis '%s'"%axis)
     
@@ -319,12 +321,27 @@ class GcodeModel:
                 style = FLY
                 currentLayerZ = newZ
                 currentLayerIdx += 1
+            # Movement, but laser is off
             elif ( oldX != newX or oldY != newY):
+                style = FLY
+            # No movement, change in feed rate. 
+            elif ( newX == oldX and newY == oldY and seg.coords['F']):
                 style = FLY
             else:    
                 # Shouldn't reach this
                 print "Failed to classify segment: "
                 print seg
+                # print "************************************************************"
+                # import sys,os
+                # classOrFile = self.__class__.__name__ if 'self' in vars() else os.path.basename(__file__)
+                # method = sys._getframe().f_code.co_name
+                # print "%(classOrFile)s:%(method)s"%vars()
+                # print '\toldX:  %s'% oldX
+                # print '\tnewX:  %s'% newX
+                # print '\toldY:  %s'% oldY
+                # print '\tnewY:  %s'% newY
+                # print "************************************************************"
+
             
             # set style and layer in segment
             seg.style = style
@@ -442,23 +459,21 @@ class GcodeModel:
         return "<GcodeModel: len(segments)=%d, len(layers)=%d, distance=%f, extrudate=%f, bbox=%s>"%(len(self.segments), len(self.layers), self.distance, self.extrudate, self.bbox)
     
 class Segment:
-    def __init__(self, gcode, coords, lineNb, line, orig_str=None):
+    def __init__(self, gcode, coords, lineNb, line):
         self.gcode = gcode
         self.coords = coords
         self.lineNb = lineNb
         self.line = line
-        self.orig_str = orig_str
         self.style = None
         self.layerIdx = 0
         self.distance = 0
         self.extrudate = 0
     def __str__(self):
-        orig = ", Orig Gcode: %s"%self.orig_str if self.orig_str else  ''
         
         s = ("<Segment: gcode=%s, lineNb=%d, style=%s, layerIdx=%d, "
-                "distance=%.2f, extrude=%.2f%s>"
+                "distance=%.2f, extrude=%.2f:  %s>"
                 %(self.gcode, self.lineNb, self.style, 
-                self.layerIdx, self.distance, self.extrudate, orig))
+                self.layerIdx, self.distance, self.extrudate, self.line))
         return s
         
 class Layer:

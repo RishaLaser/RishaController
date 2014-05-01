@@ -1,0 +1,12 @@
+Risha TODO:
+
+-- Raster image loader
+-- Engraving Gcode from raster converter
+-- UI engraving controls ( max speed, max laser power, beam width)
+-- Add speed controller UI for cutting
+-- Show laser current location in UI
+-- Add laser power control to firmware. 
+
+
+Longer term
+-- Cross platform Kivy port
