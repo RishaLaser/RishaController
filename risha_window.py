@@ -7,13 +7,7 @@ import tkFileDialog
 import risha_controller
 from risha_controller import RishaController
 
-# Gcode parsing
 from YAGV import gcodeParser
-from YAGV.gcodeParser import GcodeParser 
-
-# DXF Parsing
-from scribbles.import_dxf import DxfParser
-from scribbles.context import GCodeContext
 
 root = None
 
@@ -111,7 +105,9 @@ class RishaWindow( object):
         # Jog controls
         self.jog_distance_dropdown = None
         self.jog_distance_var = None
-        self.jog_speed_slider = None
+        self.laser_speed_var = None
+        self.laser_speed_slider = None
+        self.laser_power_var = None
         self.laser_power_slider = None
         
         # Console
@@ -255,13 +251,24 @@ class RishaWindow( object):
         self.jog_distance_dropdown = OptionMenu( jof, self.jog_distance_var, *dist_choices)
         self.jog_distance_dropdown.grid( column=1, row=2)
         
-        # Jog speed slider
+        # Sliders for laser speed and power
+        # Laser speed slider
+        self.laser_speed_var = IntVar( jof)
+        self.laser_speed_slider = Scale( jof, variable=self.laser_speed_var, 
+                from_=10, to=1500, command=self.rc.set_laser_speed, orient=HORIZONTAL)
+        lss_label = Label(jof, text="Laser Speed")
+        lss_label.grid( column=0, row=3)
+        self.laser_speed_slider.grid( column=1, row=3 )
         
         # Laser power slider
+        # TODO: We probably want a 0-100% power scale rather than 0-255
+        self.laser_power_var = IntVar( jof)
+        self.laser_power_slider = Scale( jof, variable=self.laser_power_var, 
+                from_=0, to=255, command= self.rc.set_laser_power, orient=HORIZONTAL)
+        lps_label = Label( jof, text="Laser Power")
+        lps_label.grid( column=0, row=4)
+        self.laser_power_slider.grid( column=1, row=4)
         
-        # Console textfield
-        # self.console_textfield = self.make_console_textfield( jof)
-         
         return jof
         
     def jog_control_quad( self, master):
@@ -333,60 +340,36 @@ class RishaWindow( object):
         # TODO: add some preferences so we can remember last-used 
         # directory as the next initialdirectory
         # options: defaultextension, filetypes, initialdir, initialfile, multiple, message, parent, title
-        gcode_exts = [".ngc", ".gcode"]
-        dxf_exts = [".dxf"]
-        
+        # NOTE: Any change in accepted file types will also have to change code
+        # in risha_controller.set_gcode_from_file()
         if not file_path:
-            fts = [("2D DXF files", '.dxf'), ('2D Gcode files', '.gcode')]
+            fts = [("2D DXF files", '.dxf'), 
+                    ('2D Gcode files', '.gcode'),
+                    ('Raster images', ".jpg"),
+                    ('Raster images', ".jpeg"),
+                    ('Raster images', ".gif"),
+                    ('Raster images', ".png"),
+                    ('Raster images', ".bmp"),
+                    ('Raster images', ".tif"),
+                    ]
             examples_dir = os.path.join(os.path.split(__file__)[0], 'examples')
             options = {'initialdir': examples_dir, 
                         'filetypes':fts}
             file_path = tkFileDialog.askopenfilename( **options)
         
-        ext = os.path.splitext( file_path)[1].lower()
+        res = self.rc.set_gcode_from_file( file_path)
         
-        # if we've loaded a DXF file, convert it to Gcode
-        if ext in dxf_exts:
-            gcode_model = self.convert_dxf_to_gcode( file_path)
-            
-        # if we've opened a Gcode file, split it on lines
-        elif ext in gcode_exts:
-            gcode_model = GcodeParser().parseFile( file_path)
+        if res:
+            # NOTE: need to detect strange line splits (\n\r, \r\n, etc.)?
+            self.append_to_console( "Loaded file: %s"%file_path)
+            self.draw_gcode( self.rc.loaded_gcode)
         else:
-            # shouldn't get here
-            raise ValueError( "Unable to handle file %s"%file_path)
-            
-        # NOTE: need to detect strange line splits (\n\r, \r\n, etc.)?
-        self.rc.set_loaded_gcode( gcode_model)        
-        self.append_to_console( "Loaded file: %s"%file_path)
-        self.draw_gcode( gcode_model)
+            # Some error in loading Gcode
+            print "Error loading Gcode from file %(file_path)s "%vars()
+                    
+
     
-    # NOTE: this should probably be in the controller object, not the window
-    def convert_dxf_to_gcode( self, dxf_path):
-        dxf_file = open( dxf_path, "r")
-        
-        dxf_parser = DxfParser( dxf_file)
-        
-        # FIXME: need better values for these details.  The following are
-        # defaults taken from scribbles.py
-        z_height = 0
-        z_feedrate = 150
-        xy_feedrate = 2000
-        start_delay = 60
-        stop_delay = 120
-        line_width = 0.5
-        
-        context = GCodeContext(z_feedrate, z_height, xy_feedrate, start_delay, stop_delay, line_width, dxf_path)
-        dxf_parser.parse()
-        for entity in dxf_parser.entities:
-            entity.get_gcode(context)
-        all_gcode = context.generate( should_print=False) 
-        
-        gcode_model = GcodeParser().parseString( all_gcode)
-        dxf_file.close()
-        
-        return gcode_model
-        
+
     def set_jog_buttons_enabled(self, enabled=True):
         should_enable = 'normal' if enabled else 'disabled'
         self.north_button.config( state=should_enable)
@@ -414,6 +397,8 @@ class RishaWindow( object):
         if clear_canvas:
             self.clear_canvas()
         
+        cur_color = "#FFF"
+        
         # Start at origin.  
         last_x, last_y = origin_x, self.image_canvas.winfo_height() - origin_y
         # Draw all appropriate segments
@@ -431,11 +416,16 @@ class RishaWindow( object):
                 # Change laser power as requested.  
                 # This line isn't needed assuming that 
                 # gcode_model.classifySegments() has been run
-                gcode_model.setLaserPower( segment.coords.get('S', 0))
+                new_power = segment.coords.get('S', 0)
+                # Power burns at power = 255, which we want to draw at #000, 
+                # so invert the color
+                inverted_color = 255-new_power 
+                cur_color = "#%x%x%x"%(inverted_color, inverted_color, inverted_color)
+                gcode_model.setLaserPower( new_power)
                 pass
                 
             if segment.style in [gcodeParser.DRAW, gcodeParser.EXTRUDE]:
-                self.image_canvas.create_line( last_x, last_y, next_x, next_y)
+                self.image_canvas.create_line( last_x, last_y, next_x, next_y, fill=cur_color)
                 
             elif segment.style == gcodeParser.FLY:
                 pass

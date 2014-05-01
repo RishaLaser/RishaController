@@ -1,8 +1,21 @@
 #! /usr/bin/python
 # -*- coding: UTF-8 -*-
+from __future__ import division
+
 import os, sys, re
 import serial, time
 import threading
+
+import PIL
+from PIL import Image
+
+# Gcode parsing
+from YAGV import gcodeParser
+from YAGV.gcodeParser import GcodeParser 
+
+# DXF Parsing
+from scribbles.import_dxf import DxfParser
+from scribbles.context import GCodeContext
 
 # For testing purposes only -ETJ 26 Apr 2014
 SERIAL_MOCK = False
@@ -136,6 +149,7 @@ class RishaController(object):
         self.jog_distance = jog_distance
         self.laser_speed = 0.5 # Time in which to go jog_distance
         self.laser_power = 0.1 # Power from 0 to 1 
+        self.beam_width_mm = 0.2
         self.laser_off = False
         self.cur_x = 0
         self.cur_y = 0
@@ -169,6 +183,12 @@ class RishaController(object):
     def height( self):
         # NOTE: no check on whether max & min are actually larger/smaller        
         return self.max_y - self.min_y
+    
+    def set_laser_power( self, val):
+        self.laser_power = val
+    
+    def set_laser_speed( self, val):
+        self.laser_speed = val
     
     def connect_hardware( self, port_name=None):
         port_name = port_name or self.port_name
@@ -327,7 +347,171 @@ class RishaController(object):
         abs_distance = abs_distance or self.jog_distance
         self.jog_relative( abs_distance, 0);
 
+    def set_gcode_from_file( self, file_path):
+        ext = os.path.splitext( file_path)[1].lower()
+        gcode_exts = [".ngc", ".gcode"]
+        dxf_exts = [".dxf"]
+        raster_exts = [".jpg", ".jpeg", ".gif", ".png", ".bmp", ".tif"]
+                
+        # if we've loaded a DXF file, convert it to Gcode
+        if ext in dxf_exts:
+            gcode_model = self.convert_dxf_to_gcode( file_path)
+            
+        # if we've opened a Gcode file, split it on lines
+        elif ext in gcode_exts:
+            gcode_model = GcodeParser().parseFile( file_path)
+
+        elif ext in raster_exts:
+            gcode_model = self.gcode_from_raster( file_path, self.beam_width_mm, 
+                                                    min_engrave_power= 0,
+                                                    max_engrave_power= 255,
+                                                    engrave_speed = self.laser_speed,
+                                                    upper_left=(0,0), prescale=1.0)
+        else:
+            # shouldn't get here
+            raise ValueError( "Unable to handle file %s"%file_path)
+            
+        # NOTE: need to detect strange line splits (\n\r, \r\n, etc.)?
+        self.set_loaded_gcode( gcode_model)
+        return True        
+        
+
+    def gcode_from_raster( self, image_path, beam_width_mm, 
+                             min_engrave_power, max_engrave_power,
+                            engrave_speed=1000, upper_left=( 0,0),
+                            prescale=1.0):
+        # We assume that gray_image has been scaled so that one pixel represents
+        # a square beam_width_mm x beam_width_mm
+        gcode_arr = []
     
+    
+        gray_image = self.grayscale_raster_from_image( image_path, beam_width_mm, prescale=prescale)
+
+        def laser_engrave_power( val, min_engrave_power=0, max_engrave_power=255, ):
+            # val must be in [0,255]
+            # Light values will get a small engrave power, dark ones will get a large power
+            new_val = min_engrave_power + (255-val)/255 * (max_engrave_power - min_engrave_power)
+            return new_val
+    
+        # TODO: relative motion may be broken in GcodeParser.  Use absolute until that's fixed
+        ul_x, ul_y = upper_left
+        old_engrave_power = 0
+        
+        gcode_arr.append('''(Set speed)
+G1 F%(engrave_speed)s 
+( Laser off)
+M300 S%(old_engrave_power)s  
+G91 ; absolute movement 
+(Move to upper left)
+G1 X%(ul_x)s Y%(ul_y)s'''%vars())
+    
+        w, h = gray_image.size
+        pixels = list(gray_image.getdata())
+        
+        x_pos_move = 'G1 X%(beam_width_mm)s '%vars()
+        x_neg_move = 'G1 X-%(beam_width_mm)s '%vars()
+        
+        for y in range( h):
+            row_start = w *y
+            row = pixels[ w*y: w*(y+1)]
+            
+            if y%2 == 0:
+                start_pos = 0
+                move_delta = beam_width_mm
+            else:
+                start_pos = w-1
+                move_delta = -beam_width_mm
+            
+            # TODO: look ahead for blocks of identical values
+            for x, val in enumerate(row):
+                engrave_power = laser_engrave_power( val, min_engrave_power, max_engrave_power )
+                # NOTE: we don't turn off the laser during moves, but that 
+                # might be necessary -ETJ 01 May 2014
+                x_pos = start_pos + move_delta * x
+                gcode_arr.append( 'G1 X%(x_pos)s '%vars())
+                
+                if engrave_power != old_engrave_power:
+                    gcode_arr.append( 'M300 S%(engrave_power)s '%vars())
+                    old_engrave_power = engrave_power
+
+            # Move down one row
+            y_pos = beam_width_mm * y
+            gcode_arr.append( 'G1 Y%(y_pos)s '%vars())
+    
+        # Finish & turn off laser
+        gcode_arr.append( 'M300 S0')
+    
+        # Generate a Gcode model and return it
+        # gcode_model = GcodeParser().parseString( "\n".join(gcode_arr))
+        
+        # ETJ DEBUG
+        small_gcode = "\n".join(gcode_arr[:30])
+        print small_gcode
+        gcode_model = GcodeParser().parseString( small_gcode)
+        # END DEBUG 
+        return gcode_model
+    
+
+    
+    
+
+    def grayscale_raster_from_image( self, image_path, beam_width_mm, prescale=1.0):
+        # Open image & convert to grayscale
+        im = Image.open( image_path).convert("L")
+    
+        # Resize the image so we have one single pixel for each space the laser
+        # can fill (a square  beam_width_mm x beam_width_mm)
+        
+        dpi = im.info['dpi'][0] # Technically, there could be separate x/y dpis
+        new_dpi = beam_width_mm * 25.4
+    
+        w, h = im.size
+        # NOTE: technically, we might want different ratios for X & Y, since 
+        # each pixel is burned one step next to its left and right neighbors 
+        # but hundreds of steps away from its up and down neighbors.  For the 
+        # moment, let's treat both directions as identical though -ETJ 01 May 2014
+        w_inches = w / dpi
+        h_inches = h / dpi
+        new_dpi =  25.4 / beam_width_mm 
+        
+        new_w = int( w_inches * new_dpi * prescale)
+        new_h = int( h_inches * new_dpi * prescale)
+        im_2 =  im.resize( (new_w, new_h), resample=PIL.Image.BILINEAR)
+        im_2.info['dpi'] = ( new_dpi, new_dpi)
+    
+        # # ETJ DEBUG
+        # im.show()
+        # im_2.show()
+        # # END DEBUG 
+        return im_2        
+        
+    # NOTE: this should probably be in the controller object, not the window
+    def convert_dxf_to_gcode( self, dxf_path):
+        dxf_file = open( dxf_path, "r")
+        
+        dxf_parser = DxfParser( dxf_file)
+        
+        # FIXME: need better values for these details.  The following are
+        # defaults taken from scribbles.py
+        z_height = 0
+        z_feedrate = 150
+        xy_feedrate = 2000
+        start_delay = 60
+        stop_delay = 120
+        line_width = 0.5
+        
+        context = GCodeContext(z_feedrate, z_height, xy_feedrate, start_delay, stop_delay, line_width, dxf_path)
+        dxf_parser.parse()
+        for entity in dxf_parser.entities:
+            entity.get_gcode(context)
+        all_gcode = context.generate( should_print=False) 
+        
+        gcode_model = GcodeParser().parseString( all_gcode)
+        dxf_file.close()
+        
+        return gcode_model
+                
+        
     def run_gcode( self, gcode_model=None, start_callback=None, end_callback=None):
         gcode_model = gcode_model or self.loaded_gcode
         t = GcodeRunnerThread( self, gcode_model, start_callback, end_callback)

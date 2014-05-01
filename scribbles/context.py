@@ -23,7 +23,7 @@ class GCodeContext:
         gcode_source += "G21 (metric ftw)\n"
         gcode_source += "G90 (absolute mode)\n"
         gcode_source += "G92 X0 Y0 Z0 (zero all axes)\n"
-        gcode_source += "G92 Z%0.2F F150.00 (go up to printing level)\n" %self.z_height
+        # gcode_source += "G92 Z%0.2F F150.00 (go up to printing level)\n" %self.z_height
         gcode_source += "\n"
         
         gcode_source += "\n".join( self.codes)
