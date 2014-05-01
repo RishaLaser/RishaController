@@ -225,7 +225,15 @@ class RishaWindow( object):
             self.toggle_connect_button = Button( jof, text='Connect', command=self.toggle_connection)
             
             self.port_name_var = StringVar( jof)
-            self.port_name_var.set( 'Enter Port name')            
+            default_port_name = 'Enter Port name'
+            try:
+                names, err = risha_controller.find_likely_arduino()
+                if names and not err:
+                    default_port_name = names[0]
+            except Exception, e:
+                pass
+            
+            self.port_name_var.set(default_port_name )            
             self.port_textfield = Entry( jof, textvar=self.port_name_var) 
             
             self.connection_status_label.grid(  column=0, row=0)
