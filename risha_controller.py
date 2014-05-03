@@ -366,7 +366,7 @@ class RishaController(object):
                                                     min_engrave_power= 0,
                                                     max_engrave_power= 255,
                                                     engrave_speed = self.laser_speed,
-                                                    upper_left=(0,0), prescale=1.0)
+                                                    upper_left=(0,0), prescale=5.0)
         else:
             # shouldn't get here
             raise ValueError( "Unable to handle file %s"%file_path)
@@ -374,8 +374,29 @@ class RishaController(object):
         # NOTE: need to detect strange line splits (\n\r, \r\n, etc.)?
         self.set_loaded_gcode( gcode_model)
         return True        
+    
+    # TODO: remove from class; this is just a function
+    def run_length_encode(self,  an_arr):
+        if len( an_arr) == 0: 
+            return []
+            
+        cur_count = 1
+        cur_val = an_arr[0]
+        loc = 1
+        res = [[cur_count, cur_val]]    
+    
+        while loc < len( an_arr):
+            if an_arr[loc] == cur_val:
+                res[-1][0] += 1  #increment count
+                loc += 1
+            else:
+                cur_val = an_arr[loc]
+                res.append([1,cur_val]) # add new count
+                loc += 1
         
-
+        return res
+        
+    
     def gcode_from_raster( self, image_path, beam_width_mm, 
                              min_engrave_power, max_engrave_power,
                             engrave_speed=1000, upper_left=( 0,0),
@@ -408,53 +429,70 @@ G1 X%(ul_x)s Y%(ul_y)s'''%vars())
         w, h = gray_image.size
         pixels = list(gray_image.getdata())
         
-        x_pos_move = 'G1 X%(beam_width_mm)s '%vars()
-        x_neg_move = 'G1 X-%(beam_width_mm)s '%vars()
-        
         for y in range( h):
-            row_start = w *y
-            row = pixels[ w*y: w*(y+1)]
-            
-            if y%2 == 0:
-                start_pos = 0
-                move_delta = beam_width_mm
-            else:
-                start_pos = w-1
-                move_delta = -beam_width_mm
-            
-            # TODO: look ahead for blocks of identical values
-            for x, val in enumerate(row):
-                engrave_power = laser_engrave_power( val, min_engrave_power, max_engrave_power )
-                # NOTE: we don't turn off the laser during moves, but that 
-                # might be necessary -ETJ 01 May 2014
-                x_pos = start_pos + move_delta * x
-                gcode_arr.append( 'G1 X%(x_pos)s '%vars())
-                
-                if engrave_power != old_engrave_power:
-                    gcode_arr.append( 'M300 S%(engrave_power)s '%vars())
-                    old_engrave_power = engrave_power
-
             # Move down one row
             y_pos = beam_width_mm * y
-            gcode_arr.append( 'G1 Y%(y_pos)s '%vars())
-    
+            gcode_arr.append( 'G1 Y%(y_pos)s '%vars())             
+            
+            row_start = w *y
+            row = pixels[ w*y: w*(y+1)]    
+            
+            # Returns an array of (length, value pairs), with all identical
+            # neighbors incorporated into a single pair
+            # e.g  [ 0, 1, 1, 2, 2, 2, 2]  => [ [1, 0], [2, 1], [4, 2]]
+            row_rle = self.run_length_encode( row)
+            if y %2 == 0:
+                row_loc = 0
+                direction_sign = 1
+            else:
+                row_rle = row_rle[::-1]
+                row_loc = w
+                direction_sign = -1
+            
+            # print "************************************************************"
+            # import sys,os
+            # classOrFile = self.__class__.__name__ if 'self' in vars() else os.path.basename(__file__)
+            # method = sys._getframe().f_code.co_name
+            # print "%(classOrFile)s:%(method)s"%vars()
+            # print '\trow_rle:  %s'% str(row_rle)
+            # print "************************************************************"
+
+                
+            for count, val in row_rle:
+                engrave_power = laser_engrave_power( val, min_engrave_power, max_engrave_power )
+                # NOTE: off by one?  How do we write a single pixel at beginning of a line?
+                row_loc = row_loc + (direction_sign * count * beam_width_mm )
+                gcode_arr.append( 'M300 S%(engrave_power)s '%vars())
+                gcode_arr.append( 'G1 X%(row_loc)s'%vars())
+                
+            
         # Finish & turn off laser
         gcode_arr.append( 'M300 S0')
-    
+        
+        gcode_str =  "\n".join(gcode_arr)
+        # ETJ DEBUG
+        # print "************************************************************"
+        # import sys,os
+        # classOrFile = self.__class__.__name__ if 'self' in vars() else os.path.basename(__file__)
+        # method = sys._getframe().f_code.co_name
+        # print "%(classOrFile)s:%(method)s"%vars()
+        # print '\tw:  %s'% w
+        # print '\th:  %s'% h
+        # print "************************************************************"
+
+        # print gcode_str
+        open( "/Users/jonese/Projects/RishaLaser/RishaController/examples/_test.ngc", "w").write(gcode_str)
+        # END DEBUG 
         # Generate a Gcode model and return it
-        # gcode_model = GcodeParser().parseString( "\n".join(gcode_arr))
+        gcode_model = GcodeParser().parseString( gcode_str)
         
         # ETJ DEBUG
-        small_gcode = "\n".join(gcode_arr[:30])
-        print small_gcode
-        gcode_model = GcodeParser().parseString( small_gcode)
+        # small_gcode = "\n".join(gcode_arr[:30])
+        # print small_gcode
+        # gcode_model = GcodeParser().parseString( small_gcode)
         # END DEBUG 
         return gcode_model
     
-
-    
-    
-
     def grayscale_raster_from_image( self, image_path, beam_width_mm, prescale=1.0):
         # Open image & convert to grayscale
         im = Image.open( image_path).convert("L")
@@ -485,7 +523,6 @@ G1 X%(ul_x)s Y%(ul_y)s'''%vars())
         # # END DEBUG 
         return im_2        
         
-    # NOTE: this should probably be in the controller object, not the window
     def convert_dxf_to_gcode( self, dxf_path):
         dxf_file = open( dxf_path, "r")
         

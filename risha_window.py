@@ -345,6 +345,7 @@ class RishaWindow( object):
         if not file_path:
             fts = [("2D DXF files", '.dxf'), 
                     ('2D Gcode files', '.gcode'),
+                    ('2D Gcode files', '.ngc'),
                     ('Raster images', ".jpg"),
                     ('Raster images', ".jpeg"),
                     ('Raster images', ".gif"),
