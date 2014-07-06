@@ -73,9 +73,6 @@ class RishaWindow( object):
         # widgets have been instantiated
         self.connect_instance_widgets()        
         
-
-
-
         # Connect controller to actual hardware
         try: 
             self.rc.set_logging_func( self.append_to_console)
