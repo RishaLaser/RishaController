@@ -15,8 +15,8 @@ DEBUG = True
 CUTTER_MIN_X = 0
 CUTTER_MIN_Y = 0
 
-CUTTER_MAX_X = 300
-CUTTER_MAX_Y = 300
+CUTTER_MAX_X = 360
+CUTTER_MAX_Y = 280
 
 def find_likely_arduino():
     # Returns a results, error pair:
